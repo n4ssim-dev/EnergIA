@@ -20,6 +20,25 @@ class Graph:
     def shortest_distance(self, source: str):
         distances = {node: float("inf") for node in self.graph}
         distances[source] = 0
+        visited = set()
+
+        while len(visited) < len(self.graph):
+            current = None
+            current_dist = float("inf")
+            for node in self.graph:
+                if node not in visited and distances[node] < current_dist:
+                    current = node
+                    current_dist = distances[node]
+
+            if current is None:
+                break
+            visited.add(current)
+
+            for neighbor, weight in self.graph[current].items():
+                new_dist = distances[current] + weight
+                if new_dist < distances[neighbor]:
+                    distances[neighbor] = new_dist
+
         return distances
 
 G = Graph(graph=graph)
