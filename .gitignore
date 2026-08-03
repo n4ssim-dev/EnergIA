@@ -1,0 +1,28 @@
+# Environnement virtuel
+python-service/.venv/
+python-service/venv/
+
+# Cache Python
+python-service/**/__pycache__/
+python-service/**/*.py[cod]
+
+# Tests
+python-service/.pytest_cache/
+python-service/.coverage
+python-service/htmlcov/
+
+# Variables d'environnement
+python-service/.env
+
+# Build
+python-service/build/
+python-service/dist/
+python-service/*.egg-info/
+
+# IDE
+.vscode/
+.idea/
+
+# Système
+.DS_Store
+Thumbs.db
