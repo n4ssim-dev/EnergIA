@@ -45,4 +45,7 @@ G = Graph(graph=graph)
 
 distances = G.shortest_distance("B")
 to_f = distances["F"]
-print(f"The shortest distance from B to F is {to_f}")
+if to_f == float("inf"):
+    print("There is no path from B to F")
+else:
+    print(f"The shortest distance from B to F is {to_f}")
