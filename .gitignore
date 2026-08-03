@@ -26,3 +26,6 @@ python-service/*.egg-info/
 # Système
 .DS_Store
 Thumbs.db
+
+
+node_modules/
