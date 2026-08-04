@@ -14,10 +14,10 @@ plus court chemin entre deux centrales avec l'algorithme de Dijkstra.
 | Fichier / dossier | Rôle |
 | --- | --- |
 | `data/data.json` | Jeu de données fourni (centrales, régions, liaisons, paramètres de simulation) |
-| `models.py` | Classes métier : `Reactor`, `Centrale`, `Region`, `Liaison`, `Graph` |
-| `datastore.py` | `DataStore` (chargement/vérification du JSON) + singleton `get_store()` / `reload_store()` |
-| `parsing.py` | Conversion JSON brut -> objets métier |
-| `serializers.py` | Conversion des objets métier (`Centrale`, `Region`, `Liaison`) en dict JSON |
+| `graph/models.py` | Classes métier : `Reactor`, `Centrale`, `Region`, `Liaison`, `Graph` |
+| `graph/datastore.py` | `DataStore` (chargement/vérification du JSON) + singleton `get_store()` / `reload_store()` |
+| `graph/parsing.py` | Conversion JSON brut -> objets métier |
+| `graph/serializers.py` | Conversion des objets métier (`Centrale`, `Region`, `Liaison`) en dict JSON |
 | `main.py` | Point d'entrée FastAPI : construit `app` et y branche les routes de `routes/dijkstra.py` |
 | `routes/dijkstra.py` | Endpoints de l'API (`/dijkstra/...`) |
 | `entrainement/` | Scripts d'entraînement/brouillons, non utilisés par l'API : `dijsktra-test.py` (validation de l'algo sur un petit graphe codé en dur A-G) et `rapport_print.py` (rapport console `print_report`, remplacé côté API par `/dijkstra/rapport`) |
@@ -34,7 +34,7 @@ uv run fastapi dev
 
 ## Flux de chargement des données
 
-1. `get_store()` (dans `datastore.py`) crée un `DataStore` et appelle `.load()`
+1. `get_store()` (dans `graph/datastore.py`) crée un `DataStore` et appelle `.load()`
    au premier accès (singleton paresseux, utilisé par les routes) ; l'endpoint
    `/dijkstra/load-datastore` force un rechargement via `reload_store()`.
 2. `.load()` lit `data/data.json` et remplit le `DataStore` :
@@ -51,7 +51,7 @@ uv run fastapi dev
 
 ## Le graphe
 
-`models.Graph` représente les centrales sous forme d'un dictionnaire d'adjacence :
+`graph.models.Graph` représente les centrales sous forme d'un dictionnaire d'adjacence :
 
 ```python
 adjacency = {
