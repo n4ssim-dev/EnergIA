@@ -1,57 +1,53 @@
 # nassim — Graphe & Dijkstra
 
-Partie du projet **EnergIA** dont j'ai la charge : transformer le jeu de données
-`data/data.json` (centrales, régions, liaisons) en graphe pondéré et calculer le
-plus court chemin entre deux centrales avec l'algorithme de Dijkstra.
+Le bout que je gère dans EnergIA. En gros : on prend `data/data.json`
+(des centrales, des régions, des liaisons entre centrales), on en fait un
+graphe, et on calcule le chemin le plus court entre deux centrales avec
+Dijkstra. Rien de plus.
 
 ## Prérequis
 
-- Python 3.13 (voir `.python-version`)
-- Dépendances : `fastapi[standard]`, `pydantic`, `uvicorn` (voir `pyproject.toml`)
+- Python 3.13
+- `fastapi[standard]`, `pydantic`, `uvicorn` (tout est dans `pyproject.toml`)
 
-## Structure des fichiers
+## Rôles des fichiers
 
 | Fichier / dossier | Rôle |
 | --- | --- |
-| `data/data.json` | Jeu de données fourni (centrales, régions, liaisons, paramètres de simulation) |
-| `graph/models.py` | Classes métier : `Reactor`, `Centrale`, `Region`, `Liaison`, `Graph` |
-| `graph/datastore.py` | `DataStore` (chargement/vérification du JSON) + singleton `get_store()` / `reload_store()` |
-| `graph/parsing.py` | Conversion JSON brut -> objets métier |
-| `graph/serializers.py` | Conversion des objets métier (`Centrale`, `Region`, `Liaison`) en dict JSON |
-| `main.py` | Point d'entrée FastAPI : construit `app` et y branche les routes de `routes/dijkstra.py` |
-| `routes/dijkstra.py` | Endpoints de l'API (`/dijkstra/...`) |
-| `entrainement/` | Scripts d'entraînement/brouillons, non utilisés par l'API : `dijsktra-test.py` (validation de l'algo sur un petit graphe codé en dur A-G) et `rapport_print.py` (rapport console `print_report`, remplacé côté API par `/dijkstra/rapport`) |
+| `data/data.json` | Les données brutes : centrales, régions, liaisons, params |
+| `graph/models.py` | Les classes : `Reactor`, `Centrale`, `Region`, `Liaison`, `Graph` |
+| `graph/datastore.py` | Charge le JSON en mémoire, vérifie que ça tient debout |
+| `graph/parsing.py` | Transforme le JSON brut en objets Python |
+| `graph/serializers.py` | Fait l'inverse : objets -> dict JSON |
+| `main.py` | Démarre l'app FastAPI, branche les routes |
+| `routes/dijkstra.py` | Les endpoints `/dijkstra/...` |
+| `entrainement/` | Brouillons, pas branchés à l'API (test de l'algo sur un petit graphe A-G, ancien rapport console) |
 
-## Lancer
+## Lancer le projet
 
-`main.py` n'est plus un script à exécuter directement (`python main.py`) : il
-définit désormais l'app FastAPI, à lancer via un serveur ASGI. Depuis ce
-dossier (`dijkstra/`) :
+`main.py` ne se lance plus avec `python main.py`, c'est une app FastAPI.
+Depuis `dijkstra/` :
 
 ```
 uv run fastapi dev
 ```
 
-## Flux de chargement des données
+## Comment les données arrivent
 
-1. `get_store()` (dans `graph/datastore.py`) crée un `DataStore` et appelle `.load()`
-   au premier accès (singleton paresseux, utilisé par les routes) ; l'endpoint
-   `/dijkstra/load-datastore` force un rechargement via `reload_store()`.
-2. `.load()` lit `data/data.json` et remplit le `DataStore` :
-   - `plants` -> `parse_centrale()` -> objets `Centrale` (+ ajout des nœuds au `Graph`).
-   - `regions` -> `parse_region()` -> objets `Region`.
-   - `plant_edges` -> `parse_liaison()` -> objets `Liaison` (+ ajout des arêtes au `Graph`).
-3. `.verify()` vérifie la cohérence des données chargées et renvoie la liste des
-   anomalies (exposée par `/dijkstra/anomalies`) :
-   - centrale référençant une région inconnue ;
-   - région référençant une centrale (locale ou externe) inconnue ;
-   - liaison référençant une centrale source/cible inconnue ;
-   - centrale sans aucune liaison (nœud isolé) ;
-   - production actuelle ou plafond de sécurité supérieur à la puissance installée.
+1. Au premier appel, `get_store()` charge tout une fois (singleton). Y'a
+   aussi une route `/dijkstra/load-datastore` pour forcer un rechargement.
+2. Le chargement lit le JSON et remplit trois listes d'objets :
+   centrales, régions, liaisons. Chaque centrale devient un nœud du
+   graphe, chaque liaison devient une arête.
+3. Ensuite on vérifie que les données ne racontent pas n'importe quoi :
+   régions ou centrales qui pointent vers du vide, centrales toutes
+   seules sans aucune liaison, production qui dépasse la puissance
+   installée. La liste des soucis sort sur `/dijkstra/anomalies`.
 
 ## Le graphe
 
-`graph.models.Graph` représente les centrales sous forme d'un dictionnaire d'adjacence :
+C'est juste un dictionnaire de dictionnaires : pour chaque centrale, la
+liste de ses voisines avec la distance en km.
 
 ```python
 adjacency = {
@@ -61,35 +57,28 @@ adjacency = {
 }
 ```
 
-- Un nœud par centrale (`add_node`), ajouté lors du parsing de `plants`.
-- Une arête par liaison (`add_edge`), pondérée par `distance_km` ; si la liaison
-  est bidirectionnelle (cas le plus fréquent dans le jeu de données), l'arête est
-  ajoutée dans les deux sens.
+Une liaison bidirectionnelle (le cas normal) ajoute l'arête dans les
+deux sens.
 
 ## Dijkstra
 
-`Graph.shortest_path(source, target)` :
+`Graph.shortest_path(source, target)` fait le calcul à la main, sans
+`heapq` : à chaque tour de boucle on regarde tous les nœuds pas encore
+visités et on prend celui qui a la plus petite distance connue.
 
-- Implémentation « manuelle » (sans tas binaire / `heapq`) : à chaque itération on
-  choisit parmi les nœuds non visités celui de plus petite distance connue —
-  complexité en O(V²), largement suffisante pour les 18 centrales du jeu de données.
-- Renvoie `(distance_totale_km, chemin)` où `chemin` est la liste ordonnée des
-  identifiants de centrales traversées.
-- Renvoie `(None, None)` si `source` ou `target` n'existe pas dans le graphe, ou
-  si aucun chemin ne les relie.
+Ça renvoie `(distance_totale, chemin)`, ou `(None, None)` si un des deux
+noeuds n'existe pas ou si rien ne les relie.
 
-Exemple (`GET /dijkstra/shortest-path?from_node=flamanville&to_node=tricastin`) :
+Exemple concret (`GET /dijkstra/shortest-path?from_node=flamanville&to_node=tricastin`) :
 
 ```
 flamanville -> chinon -> saint_laurent -> belleville -> bugey -> tricastin (949.8 km)
 ```
 
-## Limites connues
+## Ce qui manque
 
-- La topologie des liaisons, les pertes et les capacités de transfert sont
-  simulées pour l'exercice — elles ne représentent pas le réseau RTE réel
-  (seules les positions et puissances des centrales sont des données réelles).
-- `shortest_path()` optimise uniquement la distance géodésique. Le score
-  multi-critère (pertes, marge disponible, saturation, priorité régionale) fait
-  partie du moteur prescriptif, développé séparément.
-- Pas de tests unitaires dans ce dossier pour l'instant.
+- Les liaisons, pertes et capacités sont inventées pour l'exercice —
+  seules les positions et puissances des centrales sont vraies.
+- On optimise juste la distance. Un vrai score (pertes, marge,
+  saturation, priorité régionale) c'est un autre chantier, pas fait ici.
+- Pas de tests. Zéro.
