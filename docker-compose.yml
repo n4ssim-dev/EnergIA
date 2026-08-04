@@ -4,12 +4,14 @@ services:
     image: emfall/energia-python
     ports:
       - "8000:8000"
-    env_file:
-      - ./python-service/.env
-  
+    environment:
+      HOST: 0.0.0.0
+      PORT: 8000
+
   gateway:
     image: emfall/energia-gateway
     ports:
       - "3000:3000"
-    env_file:
-      - ./lola/gateway/.env
+    environment:
+      HOST: 0.0.0.0
+      PORT: 3000
