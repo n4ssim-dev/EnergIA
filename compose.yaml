@@ -1,0 +1,28 @@
+services:
+
+  python-service:
+    container_name: energia-python
+    build:
+      context: .
+      dockerfile: ./python-service/Dockerfile
+    ports:
+      - "8000:8000"
+    env_file:
+      - ./python-service/.env
+    volumes:
+      - ./python-service:/app
+  
+  gateway:
+    container_name: energia-gateway
+    build:
+      context: .
+      dockerfile: ./lola/gateway/Dockerfile
+    ports:
+      - "3000:3000"
+    env_file:
+      - ./lola/gateway/.env
+    depends_on:
+      - python-service
+    volumes:
+      - ./lola/gateway:/app
+      - /app/node_modules
