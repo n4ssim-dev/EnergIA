@@ -81,4 +81,6 @@ flamanville -> chinon -> saint_laurent -> belleville -> bugey -> tricastin (949.
   seules les positions et puissances des centrales sont vraies.
 - On optimise juste la distance. Un vrai score (pertes, marge,
   saturation, priorité régionale) c'est un autre chantier, pas fait ici.
-- Pas de tests. Zéro.
+- Quelques tests rudimentaires dans `tests/` (health, load-datastore,
+  shortest-path). Ça vérifie que ça tourne, pas que c'est juste dans
+  tous les cas.
