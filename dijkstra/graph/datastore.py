@@ -1,11 +1,11 @@
 import json
 from pathlib import Path
 
-from models import Graph
-from parsing import parse_centrale, parse_liaison, parse_region
+from .models import Graph
+from .parsing import parse_centrale, parse_liaison, parse_region
 
 
-DATA_PATH = Path(__file__).parent / "data" / "data.json"
+DATA_PATH = Path(__file__).parent.parent / "data" / "data.json"
 
 
 # Conteneur central (centrales, régions, liaisons et graphe associé)
@@ -111,3 +111,21 @@ class DataStore:
 def load_datastore(path=DATA_PATH):
     """Fonction utilitaire réutilisable ailleurs (routes API, tests, etc.)."""
     return DataStore().load(path)
+
+
+_store = None
+
+
+def get_store():
+    """Retourne le DataStore partagé, en le chargeant au besoin (singleton)."""
+    global _store
+    if _store is None:
+        _store = load_datastore()
+    return _store
+
+
+def reload_store():
+    """Force un rechargement du DataStore partagé et le retourne."""
+    global _store
+    _store = load_datastore()
+    return _store
