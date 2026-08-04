@@ -28,4 +28,4 @@ python-service/*.egg-info/
 Thumbs.db
 
 
-node_modules/
+/lola/gateway/node_modules/
