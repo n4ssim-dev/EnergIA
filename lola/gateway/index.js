@@ -16,16 +16,26 @@ app.use(express.json());
 // Envoi de la demande des centrales à python-service
 app.get("/api/centrales", async (req, res) => {
   try {
-    const reponse = await axios.get("http://python-service:8000/centrales");
+    const reponse = await axios.get(
+      "http://python-service:8000/centrales",
+      {
+        headers: {
+          "x_password": "5",
+        },
+      }
+    );
+
     res.status(200).json({
       success: true,
-      message: "La demande a été envoyé à python-service",
-      reponse: reponse.data
+      message: "La demande a été envoyée à python-service",
+      reponse: reponse.data,
     });
   } catch (error) {
-    // Si le moindre echec envoi le catch
-    res.status(500).json({
-      message: error.message,
+    res.status(error.response?.status || 500).json({
+      success: false,
+      message:
+        error.response?.data?.detail ||
+        "Impossible de contacter le service Python",
     });
   }
 });
