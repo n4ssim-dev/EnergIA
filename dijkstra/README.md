@@ -7,40 +7,47 @@ plus court chemin entre deux centrales avec l'algorithme de Dijkstra.
 ## Prérequis
 
 - Python 3.13 (voir `.python-version`)
-- Aucune dépendance externe (stdlib uniquement : `json`, `pathlib`)
+- Dépendances : `fastapi[standard]`, `pydantic`, `uvicorn` (voir `pyproject.toml`)
 
 ## Structure des fichiers
 
-| Fichier | Rôle |
+| Fichier / dossier | Rôle |
 | --- | --- |
 | `data/data.json` | Jeu de données fourni (centrales, régions, liaisons, paramètres de simulation) |
 | `models.py` | Classes métier : `Reactor`, `Centrale`, `Region`, `Liaison`, `Graph` |
-| `main.py` | Chargement du JSON (`DataStore`), vérification de cohérence, rapport |
-| `dijsktra.py` | Brouillon initial de Dijkstra sur un petit graphe codé en dur (A-G), utilisé pour valider l'algorithme avant de l'intégrer dans `models.Graph` |
+| `datastore.py` | `DataStore` (chargement/vérification du JSON) + singleton `get_store()` / `reload_store()` |
+| `parsing.py` | Conversion JSON brut -> objets métier |
+| `serializers.py` | Conversion des objets métier (`Centrale`, `Region`, `Liaison`) en dict JSON |
+| `main.py` | Point d'entrée FastAPI : construit `app` et y branche les routes de `routes/dijkstra.py` |
+| `routes/dijkstra.py` | Endpoints de l'API (`/dijkstra/...`) |
+| `entrainement/` | Scripts d'entraînement/brouillons, non utilisés par l'API : `dijsktra-test.py` (validation de l'algo sur un petit graphe codé en dur A-G) et `rapport_print.py` (rapport console `print_report`, remplacé côté API par `/dijkstra/rapport`) |
 
 ## Lancer
 
+`main.py` n'est plus un script à exécuter directement (`python main.py`) : il
+définit désormais l'app FastAPI, à lancer via un serveur ASGI. Depuis ce
+dossier (`dijkstra/`) :
+
 ```
-python main.py
+uv run fastapi dev
 ```
 
-## Flux de `main.py`
+## Flux de chargement des données
 
-1. `load_datastore()` crée un `DataStore` et appelle `.load()`.
+1. `get_store()` (dans `datastore.py`) crée un `DataStore` et appelle `.load()`
+   au premier accès (singleton paresseux, utilisé par les routes) ; l'endpoint
+   `/dijkstra/load-datastore` force un rechargement via `reload_store()`.
 2. `.load()` lit `data/data.json` et remplit le `DataStore` :
    - `plants` -> `parse_centrale()` -> objets `Centrale` (+ ajout des nœuds au `Graph`).
    - `regions` -> `parse_region()` -> objets `Region`.
    - `plant_edges` -> `parse_liaison()` -> objets `Liaison` (+ ajout des arêtes au `Graph`).
 3. `.verify()` vérifie la cohérence des données chargées et renvoie la liste des
-   anomalies :
+   anomalies (exposée par `/dijkstra/anomalies`) :
    - centrale référençant une région inconnue ;
    - région référençant une centrale (locale ou externe) inconnue ;
    - liaison référençant une centrale source/cible inconnue ;
    - centrale sans aucune liaison (nœud isolé) ;
    - production actuelle ou plafond de sécurité supérieur à la puissance installée.
-4. `.print_report()` affiche un résumé du chargement, un exemple de centrale/région/
-   liaison, un exemple de chemin calculé avec `Graph.shortest_path()` (Dijkstra,
-   cas trouvé et cas absent) et la liste des anomalies.
 
 ## Le graphe
 
@@ -71,11 +78,10 @@ adjacency = {
 - Renvoie `(None, None)` si `source` ou `target` n'existe pas dans le graphe, ou
   si aucun chemin ne les relie.
 
-Exemple (`main.py`) :
+Exemple (`GET /dijkstra/shortest-path?from_node=flamanville&to_node=tricastin`) :
 
 ```
-flamanville -> tricastin : flamanville -> chinon -> saint_laurent -> belleville -> bugey -> tricastin (949.8 km)
-flamanville -> centrale_inconnue : aucun chemin trouvé
+flamanville -> chinon -> saint_laurent -> belleville -> bugey -> tricastin (949.8 km)
 ```
 
 ## Limites connues
