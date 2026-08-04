@@ -1,6 +1,8 @@
 # Environnement virtuel
 python-service/.venv/
 python-service/venv/
+.venv/
+.env
 
 # Cache Python
 python-service/**/__pycache__/
