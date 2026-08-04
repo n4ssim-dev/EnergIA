@@ -1,4 +1,4 @@
-from dijkstra.graph.models import Centrale, Liaison, Reactor, Region
+from .models import Centrale, Liaison, Reactor, Region
 
 
 # parsing json brute > classes

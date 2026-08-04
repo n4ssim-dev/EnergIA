@@ -1,11 +1,11 @@
 import json
 from pathlib import Path
 
-from dijkstra.graph.models import Graph
-from dijkstra.graph.parsing import parse_centrale, parse_liaison, parse_region
+from .models import Graph
+from .parsing import parse_centrale, parse_liaison, parse_region
 
 
-DATA_PATH = Path(__file__).parent / "data" / "data.json"
+DATA_PATH = Path(__file__).parent.parent / "data" / "data.json"
 
 
 # Conteneur central (centrales, régions, liaisons et graphe associé)

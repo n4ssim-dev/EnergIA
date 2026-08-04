@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException
 
-from dijkstra.graph.datastore import get_store, reload_store
-from dijkstra.graph.serializers import serialize_centrale, serialize_liaison, serialize_region
+from graph.datastore import get_store, reload_store
+from graph.serializers import serialize_centrale, serialize_liaison, serialize_region
 
 router = APIRouter(prefix="/dijkstra")
 
