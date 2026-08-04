@@ -2,6 +2,7 @@ from fastapi import APIRouter, HTTPException
 
 from graph.datastore import get_store, reload_store
 from graph.serializers import serialize_centrale, serialize_liaison, serialize_region
+from calcul import calcul_score,repartir_demande,classer_candidats,du_terroire,trouver_liaison,rechercher_centrales_distantes
 
 router = APIRouter(prefix="/dijkstra")
 
@@ -90,3 +91,11 @@ def get_anomalies():
     store = get_store()
     anomalies = store.verify()
     return {"count": len(anomalies), "anomalies": anomalies}
+
+@router.get("/calcule")
+def get_calcule(region: str, augmentation_mw: float):
+        store = get_store()
+        region_data = store.regions.get(region)
+        if region_data == None:
+            return(None)
+        
