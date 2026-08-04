@@ -31,3 +31,5 @@ Thumbs.db
 
 
 /lola/gateway/node_modules/
+
+dijkstra/**/__pycache__/
