@@ -2,10 +2,21 @@
 import json
 
 from fastapi import APIRouter
+from fastapi import APIRouter, Depends, Header, HTTPException, status
 
 router = APIRouter()
 
 
+def check_password(x_password: str | None = Header(default=None)):
+    if x_password != "5":
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Mot de passe incorrect ou absent"
+        )
+
+router = APIRouter(
+    dependencies=[Depends(check_password)]
+)
 #-------------------------------------------------------------------------------
 # Fonction de chargement des données 
 #-------------------------------------------------------------------------------
