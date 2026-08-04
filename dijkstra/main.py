@@ -1,7 +1,7 @@
-from datastore import load_datastore
-from report import print_report
+from fastapi import FastAPI
 
+from routes.dijkstra import router as dijkstra_router
 
-if __name__ == "__main__":
-    store = load_datastore()
-    print_report(store)
+app = FastAPI()
+
+app.include_router(router=dijkstra_router)
