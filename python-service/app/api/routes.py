@@ -1,8 +1,9 @@
-
 import json
 
 from fastapi import APIRouter
 from fastapi import APIRouter, Depends, Header, HTTPException, status
+import httpx
+
 
 router = APIRouter()
 
@@ -17,6 +18,7 @@ def check_password(x_password: str | None = Header(default=None)):
 router = APIRouter(
     dependencies=[Depends(check_password)]
 )
+
 #-------------------------------------------------------------------------------
 # Fonction de chargement des données 
 #-------------------------------------------------------------------------------
@@ -67,12 +69,21 @@ def get_liaisons():
 # Une région a besoin de X MW supplémentaires : quelles centrales doivent augmenter leur 
 # production, et de combien ? »
 #-----------------------------------------------------------------------------------------
-@router.post("/simulation")
-def simulation():
-#     {
-#   "region_id": "centre_val_de_loire",
-#   "additional_demand_mw": 500
-# }
+
+@router.get("/simulation")
+async def simulation(region: str, augmentation_mw: float):
+    async with httpx.AsyncClient() as client:
+        response = await client.get(
+            "http://127.0.0.1:8001/dijkstra/calcule",
+            params={
+                "region": region,
+                "augmentation_mw": augmentation_mw
+            }
+        )
+
+    response.raise_for_status()
+
     return {
         "message": "Simulation lancée",
+        "resultat": response.json()
     }
