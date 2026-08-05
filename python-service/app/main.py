@@ -13,4 +13,3 @@ def home():
     return {
         "message": "Microservice Python Fonctionne"
     }
-    
