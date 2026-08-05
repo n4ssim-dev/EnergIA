@@ -167,8 +167,8 @@ augmentation	nombre	Puissance supplémentaire demandée, exprimée en mégawatts
 
 La valeur augmentation doit être envoyée sous la forme d’un nombre et non d’une chaîne de caractères.
 
+---
 
-# Fonctionnnement 
 
 liste des éléments à ajouter au Readme : 
 
