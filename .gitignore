@@ -7,6 +7,8 @@ python-service/venv/
 # Cache Python
 python-service/**/__pycache__/
 python-service/**/*.py[cod]
+__pycache__/
+.pytest_cache/
 
 # Tests
 python-service/.pytest_cache/
@@ -33,6 +35,10 @@ Thumbs.db
 node_modules/
 
 dijkstra/**/__pycache__/
+
+fastapi/**/__pycache__/
+fastapi/.venv/
+fastapi/.pytest_cache/
 
 # Ignorer tous les fichiers pycache
 __pycache__/
