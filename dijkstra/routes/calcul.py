@@ -1,4 +1,4 @@
-
+from haversine import haversine
 
 
 # ---------------------------------------------------------------------------
@@ -142,3 +142,16 @@ def repartir_demande(demande_mw, candidats_tries):
         "allocation": allocation,
         "unsatisfied_mw": demand_left
     }
+
+# ---------------------------------------------------------------------------
+# 10. Calcule longitude et latitude
+# ---------------------------------------------------------------------------
+def calcul_distance_region(region_data, central):
+    longitude = region_data.longitude
+    latitude = region_data.latitude
+    regionPosition=(latitude,longitude)
+    centralLongitude = central.longitude
+    centralLatitude = central.latitude
+    centralPosition=(centralLatitude,centralLongitude)
+    result = haversine(regionPosition,centralPosition)
+    return (result)
