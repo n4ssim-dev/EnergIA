@@ -32,7 +32,7 @@ python-service/*.egg-info/
 Thumbs.db
 
 
-/lola/gateway/node_modules/
+node_modules/
 
 dijkstra/**/__pycache__/
 
