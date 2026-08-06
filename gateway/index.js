@@ -20,7 +20,7 @@ app.get("/api/centrales", async (req, res) => {
       "http://python-service:8000/centrales",
       {
         headers: {
-          "x_password": "5",
+          "x-password": "5",
         },
       }
     );
@@ -47,7 +47,7 @@ app.get("/api/regions", async (req, res) => {
     const reponse = await axios.get("http://python-service:8000/regions",
       {
         headers: {
-          "x_password": "5",
+          "x-password": "5",
         },
       }
     );
@@ -70,7 +70,7 @@ app.get("/api/liaisons", async (req, res) => {
     const reponse = await axios.get("http://python-service:8000/liaisons",
       {
         headers: {
-          "x_password": "5",
+          "x-password": "5",
         },
       }
     );

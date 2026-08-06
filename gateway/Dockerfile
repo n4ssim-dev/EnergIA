@@ -7,16 +7,16 @@ WORKDIR /app
 
 
 # Copier les dépendances
-COPY ./lola/gateway/package*.json ./
+COPY ./gateway/package*.json ./
 
 # Installer les dépendances
-RUN npm install 
+RUN npm install
 
 # Installer nodemon globalement (si pas dans package.json)
 RUN npm install -g nodemon
 
 # Copier le code source
-COPY ./lola/gateway .
+COPY ./gateway .
 
 # Exposer le port Express
 EXPOSE 3000

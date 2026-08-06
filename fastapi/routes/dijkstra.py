@@ -92,8 +92,13 @@ def get_anomalies():
     anomalies = store.verify()
     return {"count": len(anomalies), "anomalies": anomalies}
 
-@router.get("/calcule")
-def get_calcule(region: str, augmentation_mw: float):
+
+def run_simulation(region: str, augmentation_mw: float):
+    """Calcule la répartition d'une demande supplémentaire (MW) sur une région.
+
+    Factorisée pour être appelable à la fois par `/dijkstra/calcule` et par
+    `/simulation` (routes/api.py, héritées de python-service).
+    """
     store = get_store()
     region_data = store.regions.get(region)
     if region_data is None:
@@ -125,7 +130,7 @@ def get_calcule(region: str, augmentation_mw: float):
             "initial_output_mw": central.initial_output_mw,
         })
 
-    # --- Centrales externes 
+    # --- Centrales externes
     if central_locales:
         source_id = central_locales[0].id
         distantes = rechercher_centrales_distantes(
@@ -136,7 +141,7 @@ def get_calcule(region: str, augmentation_mw: float):
             central = store.centrales.get(d["plant_id"])
             if central is None:
                 continue
-            
+
             result = calcul_score(
                 geodesic_distance_km=d["distance_km"],
                 loss_percent=d["loss_percent"],
@@ -153,12 +158,12 @@ def get_calcule(region: str, augmentation_mw: float):
                 "initial_output_mw": central.initial_output_mw,
             })
     else:
-        
+
         for plant_id in region_data.external_entry_plant_ids:
             central = store.centrales.get(plant_id)
             if central is None:
                 continue
-            if plant_id in region_data.local_plant_ids :
+            if plant_id in region_data.local_plant_ids:
                 continue
             result = calcul_score(
                 geodesic_distance_km=0,
@@ -185,3 +190,8 @@ def get_calcule(region: str, augmentation_mw: float):
         "repartition": resultat["allocation"],
         "puissance_manquante_mw": resultat["unsatisfied_mw"]
     }
+
+
+@router.get("/calcule")
+def get_calcule(region: str, augmentation_mw: float):
+    return run_simulation(region, augmentation_mw)
