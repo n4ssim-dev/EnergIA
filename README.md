@@ -46,7 +46,9 @@ Le projet a été réalisé avec **Docker** (voir le fichier `compose.yaml`).
 L'application est composée de deux conteneurs :
 
 - **energia-gateway** : le backend basé sur une API Express, exposant les ressources nécessaires au     fonctionnement de l'application ;
-- **energia-python** : microservice développé avec FastAPI. Il expose les données relatives aux centrales, aux régions et aux liaisons, et permet de lancer une simulation avec le moteur prescriptif ;
+- **energia-fastapi** : microservice développé avec FastAPI, à partir du dossier [`fastapi/`](fastapi/). Il expose les données relatives aux centrales, aux régions et aux liaisons, et permet de lancer une simulation avec le moteur prescriptif (voir [`fastapi/README.md`](fastapi/README.md)) ;
+
+`fastapi/` reprend la structure et le moteur de [`dijkstra/`](dijkstra/) et y agrège les routes historiquement portées par [`python-service/`](python-service/). Ces deux derniers dossiers restent présents dans le dépôt à titre de référence mais ne sont plus branchés à `docker-compose` ni à `gateway/`.
 
 ---
 # Prérequis
@@ -73,13 +75,13 @@ cd <EnergIA>
 ```
 ## 2. Configuration des variables d'environnement
 
-Créer un fichier `.env` dans chacune des dossiers "python-service" et "gateway" 
+Créer un fichier `.env` dans chacune des dossiers "fastapi" et "gateway" 
 en vous basant sur le fichier `.env.example`.
 
 Exemple :
 
 cp gateway/.env.example gateway/.env
-cp python-service/.env.example python-service/.env
+cp fastapi/.env.example fastapi/.env
 
 Les valeurs des variables doivent être adaptées à l’environnement utilisé.
 
