@@ -2,7 +2,7 @@ from fastapi import APIRouter, HTTPException
 
 from graph.datastore import get_store, reload_store
 from graph.serializers import serialize_centrale, serialize_liaison, serialize_region
-from .calcul import calcul_score,repartir_demande,classer_candidats,du_terroire,trouver_liaison,rechercher_centrales_distantes
+from .calcul import calcul_score,repartir_demande,classer_candidats,du_terroire,trouver_liaison,rechercher_centrales_distantes,calcul_distance_region
 
 router = APIRouter(prefix="/dijkstra")
 
@@ -158,7 +158,12 @@ def run_simulation(region: str, augmentation_mw: float):
                 "initial_output_mw": central.initial_output_mw,
             })
     else:
-
+        note = (
+            "Aucune centrale locale dans cette région : la distance vers les "
+            "centrales externes est estimée via la formule de Haversine "
+            "(région -> centrale, à vol d'oiseau), et les pertes réseau sont "
+            "fixées à 0% par défaut (non calculables sans liaison directe connue)."
+        )
         for plant_id in region_data.external_entry_plant_ids:
             central = store.centrales.get(plant_id)
             if central is None:
@@ -166,7 +171,7 @@ def run_simulation(region: str, augmentation_mw: float):
             if plant_id in region_data.local_plant_ids:
                 continue
             result = calcul_score(
-                geodesic_distance_km=0,
+                geodesic_distance_km = calcul_distance_region(region_data,central),
                 loss_percent=0,
                 soft_upper_bound_mw=central.soft_upper_bound_mw,
                 technical_penalty=central.technical_penalty,
@@ -184,12 +189,16 @@ def run_simulation(region: str, augmentation_mw: float):
     candidats_tries = classer_candidats(candidats)
     resultat = repartir_demande(augmentation_mw, candidats_tries)
 
-    return {
+    reponse = {
         "region": region,
         "demande_mw": augmentation_mw,
         "repartition": resultat["allocation"],
         "puissance_manquante_mw": resultat["unsatisfied_mw"]
     }
+    if note:
+        reponse["note"] = note
+
+    return reponse
 
 
 @router.get("/calcule")
