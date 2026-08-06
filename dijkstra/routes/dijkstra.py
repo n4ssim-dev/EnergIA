@@ -132,9 +132,11 @@ def get_calcule(region: str, augmentation_mw: float):
             source_id, region_data.external_entry_plant_ids, store
         )
         for d in distantes:
+            if d["plant_id"] in region_data.local_plant_ids: continue
             central = store.centrales.get(d["plant_id"])
             if central is None:
                 continue
+            
             result = calcul_score(
                 geodesic_distance_km=d["distance_km"],
                 loss_percent=d["loss_percent"],
@@ -156,7 +158,8 @@ def get_calcule(region: str, augmentation_mw: float):
             central = store.centrales.get(plant_id)
             if central is None:
                 continue
-            liaison = trouver_liaison(store.liaisons, plant_id, plant_id)  # à ajuster
+            if plant_id in region_data.local_plant_ids :
+                continue
             result = calcul_score(
                 geodesic_distance_km=0,
                 loss_percent=0,
