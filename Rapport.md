@@ -3,6 +3,13 @@
 ## Cataloguer les dimensions intéressantes pour prédire une consommation
 À produire par le groupe : sélectionner les 4 à 6 dimensions jugées les plus utiles pour un premier modèle, en justifiant les choix (pertinence attendue vs facilité d'obtention de la donnée).
 
+réponse : 
+- Dimension temporelle : jour, heure, saisons et mois.
+- Dimension météo : température (min/max par jour)
+- Dimension évent : fériés, vacances, catastrophe naturelle, évenement spécial (culture,sport, ect..), 
+- Dimension régional : démographie, part industrielle lourd, nom de la région, code insee, nombre de central part électrique hors nucléaire et part nucléaire absolu
+
+
 ## Cartographier les sources de données disponibles
 Pour chaque dimension retenue à l'étape 1, identifiez une source de données réelle et remplissez :
 
