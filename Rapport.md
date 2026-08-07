@@ -13,9 +13,11 @@ réponse :
 ## Cartographier les sources de données disponibles
 Pour chaque dimension retenue à l'étape 1, identifiez une source de données réelle et remplissez :
 
-| Source | Dimension(s) couverte(s) | Fréquence de mise à jour | Format | Contraintes d'accès |
 
-| API météo (à choisir) | Température, humidité, ensoleillement | Horaire | JSON | Clé API, quota d'appels gratuits limité |
+
+| Source | Dimension(s) couverte(s) | Fréquence de mise à jour | Format | Contraintes d'accès |
+|---|---|---|---|---|
+|API météo (à choisir)| température (min/max par jour) | Horaire | JSON | Clé API, quota d'appels gratuits limité |
 
 Livrable de cette étape : le tableau complété, avec au moins une source réelle testée (un appel ou téléchargement simple, même sans exploitation complète).
 
@@ -24,18 +26,35 @@ Livrable de cette étape : le tableau complété, avec au moins une source réel
 - `Streaming/temps réel` : ex. interroger une API météo à chaque requête de prédiction.
 Pour chaque source retenue, précisez si elle relève d'un flux batch ou temps réel, et pourquoi.
 
+Météo : streaming
+Dim région : batch
+Dim évènement : batch
+
 ## Schématiser le flux de données
 Questions à trancher :
 
 - Le module de prédiction est-il un nouveau microservice séparé, ou une extension du service existant?
+Le module de prédiction sera dans un autre micro-service pour avoir cette séparation :
+  - Analyse prédictive de la consommation pour pouvoir être utilisé par Dijsktra.
+  - Dijsktra lui sert à gérer la distribution en fonction de la prédiction de consommation.
+
 - Comment le résultat de prédiction (ex. additional_demand_mw) est-il transmis au moteur déjà développé ?
+Par une route définit qui à partir d'une plage de date donnée fait une prédiction de consommation mw, qui est envoyé au moteur prescriptif.
+
 - Qui gère les erreurs si une source externe (météo, calendrier) est indisponible (fallback, valeur par défaut, message d'erreur propagé) ?
+Dashboard des alertes pour la vérification des services externes indisponibles. Par la suite code pour gérer les exeptions et réagir sur la perte de données.
 
 ## Modéliser un schéma de base de données
 
 ## Anticiper les questions opérationnelles
 - Où et comment stocker les clés API (météo, éventuellement autres) de façon sécurisée (variables d'environnement, jamais en dur dans le code) ?
+.env, sécurisation des routes et mise en place des variables environnements.
+
 - Que se passe-t-il si le modèle ML n'est pas encore entraîné au moment de la requête (valeur par défaut, erreur explicite) ?
+Nous choisissons un message explicite "Trop tôt" ou "Attent ton tour", "Merci de patienter", "Vas boire un café", "Tu devrais rentrer chez toi".
+
 - Faut-il mettre en cache les prédictions récentes pour éviter de recalculer à chaque appel ?
+Oui
 
 ## Piloter le modèle une fois en production (MLOps)
+Dans l'idéal on veut tous ! A voir ce qu'on arrive à faire.
