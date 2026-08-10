@@ -4,8 +4,9 @@ from graph.datastore import get_store
 from graph.serializers import serialize_centrale, serialize_liaison, serialize_region
 from .calcul import executer_simulation
 
-# Routes à plat (sans préfixe) historiquement exposées par python-service et
-# consommées telles quelles par lola/gateway/index.js.
+# Routes à plat (sans préfixe) exposées publiquement : c'est la surface
+# HTTP consommée par le gateway Express (lola/gateway/index.js), pas une
+# réimplémentation de celui-ci. Hérité de python-service/app/api/routes.py.
 router = APIRouter()
 
 
