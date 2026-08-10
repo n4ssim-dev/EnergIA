@@ -1,17 +1,17 @@
 services:
 
   python-service:
-    image: emfall/energia-python
+    image: n4ssim11/energia:${API_IMAGE_TAG:-api-latest}
     ports:
-      - "8000:8000"
+      - "${API_PORT:-8000}:8000"
     environment:
       HOST: 0.0.0.0
       PORT: 8000
 
   gateway:
-    image: emfall/energia-gateway
+    image: n4ssim11/energia:${GATEWAY_IMAGE_TAG:-gateway-latest}
     ports:
-      - "3000:3000"
+      - "${GATEWAY_PORT:-3000}:3000"
     environment:
       HOST: 0.0.0.0
       PORT: 3000
