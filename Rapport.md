@@ -151,6 +151,8 @@ Par exemple, si l’API météo est temporairement indisponible, le système pou
 
 ## Modéliser un schéma de base de données
 
+![Texte alternatif](documentation/mcd.png)
+
 ## Anticiper les questions opérationnelles
 
 
