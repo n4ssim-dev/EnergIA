@@ -1,0 +1,17 @@
+services:
+
+  python-service:
+    image: n4ssim11/energia:${API_IMAGE_TAG:-api-latest}
+    ports:
+      - "${API_PORT:-8000}:8000"
+    environment:
+      HOST: 0.0.0.0
+      PORT: 8000
+
+  gateway:
+    image: n4ssim11/energia:${GATEWAY_IMAGE_TAG:-gateway-latest}
+    ports:
+      - "${GATEWAY_PORT:-3000}:3000"
+    environment:
+      HOST: 0.0.0.0
+      PORT: 3000
