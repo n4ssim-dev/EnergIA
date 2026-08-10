@@ -13,13 +13,15 @@ réponse :
 ## Cartographier les sources de données disponibles
 Pour chaque dimension retenue à l'étape 1, identifiez une source de données réelle et remplissez :
 
-
-
 | Source | Dimension(s) couverte(s) | Fréquence de mise à jour | Format | Contraintes d'accès |
 |---|---|---|---|---|
-|API météo (à choisir)| température (min/max par jour) | Horaire | JSON | Clé API, quota d'appels gratuits limité |
+| https://odre.opendatasoft.com/api/explore/v2.1/catalog/datasets/temperature-quotidienne-regionale/exports/json | dim_meteo | Mise à jour  mensuelle, pas temporel des données est journalier | JSON | API publique OpenDataSoft, sans clé API indiquée ; Licence Ouverte v2.0 (Etalab) |
+| Construire à partir d'un calendrier et compléter les jours féries avec une api https://www.data.gouv.fr/dataservices/jours-feries | dim_temps | -- | JSON | API publique data.gouv.fr |
+| Population : https://www.insee.fr/fr/statistiques/8680653<br>Code région : https://www.insee.fr/fr/information/8377162 | dim_region | -- | CSV | CSV publique insee.fr |
+| https://www.data.gouv.fr/datasets/donnees-touristiques-de-la-base-datatourisme | dim_evenement | -- | CSV | CSV publique data.gouv.fr |
+| https://odre.opendatasoft.com/api/explore/v2.1/catalog/datasets/consommation-quotidienne-brute-regionale/exports/json | fait_consommation_electrique | Mise à jour mensuelle | JSON | Open Data Réseaux énergies ODRE |
 
-Livrable de cette étape : le tableau complété, avec au moins une source réelle testée (un appel ou téléchargement simple, même sans exploitation complète).
+
 
 ## Distinguer les types de flux
 - `Batch` (traitement périodique) : ex. récupérer l'historique RTE une fois par jour via un script planifié (cron).
@@ -57,4 +59,10 @@ Nous choisissons un message explicite "Trop tôt" ou "Attent ton tour", "Merci d
 Oui
 
 ## Piloter le modèle une fois en production (MLOps)
-Dans l'idéal on veut tous ! A voir ce qu'on arrive à faire.
+Dans l'idéal, on veut tous ! À voir ce qu'on arrive à faire.
+
+- Traçabilité
+- Suivi de la performance
+- Détection de drift
+- Réentraînement
+- Versionning
