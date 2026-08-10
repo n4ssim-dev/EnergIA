@@ -43,7 +43,7 @@ routes sauf `/` et `/health`).
 | `routes/auth.py` | Dépendance FastAPI qui vérifie le header `X-Password` |
 | `routes/dijkstra.py` | Les endpoints détaillés `/dijkstra/...` (hérités de `dijkstra/`) |
 | `routes/calcul.py` | Le moteur prescriptif : score des candidats, répartition de la demande |
-| `routes/gateway.py` | Les endpoints à plat (`/centrales`, `/regions`, `/liaisons`, `/simulation`) hérités de `python-service/`, attendus par `lola/gateway` |
+| `routes/public.py` | Les endpoints à plat (`/centrales`, `/regions`, `/liaisons`, `/simulation`) hérités de `python-service/` — la surface HTTP consommée par le gateway Express (`lola/gateway/`), pas une réimplémentation de celui-ci |
 | `main.py` | Démarre l'app FastAPI, branche les routes et l'auth |
 
 ## Deux surfaces d'API pour les mêmes données
