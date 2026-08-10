@@ -20,7 +20,10 @@ Pour chaque dimension retenue à l'étape 1, identifiez une source de données r
 | Population : https://www.insee.fr/fr/statistiques/8680653<br>Code région : https://www.insee.fr/fr/information/8377162 | dim_region | -- | CSV | CSV publique insee.fr |
 | https://www.data.gouv.fr/datasets/donnees-touristiques-de-la-base-datatourisme | dim_evenement | -- | CSV | CSV publique data.gouv.fr |
 | https://odre.opendatasoft.com/api/explore/v2.1/catalog/datasets/consommation-quotidienne-brute-regionale/exports/json | fait_consommation_electrique | Mise à jour mensuelle | JSON | Open Data Réseaux énergies ODRE |
-
+|METEO|: https://open-meteo.com/ | n'importe quelle région en réglant sur le site
+|population par région | https://www.insee.fr/fr/statistiques/8721456 | csv publique de 1975 à 2026 |
+|Consomation energétique par région | https://www.data.gouv.fr/dataservices/consommation-annuelle-delectricite-et-gaz-par-region
+|consomation part industrie lourde | https://opendata.agenceore.fr/data-fair/api/v1/datasets/consommation-annuelle-d-electricite-et-gaz-par-region/
 
 
 ## Distinguer les types de flux
