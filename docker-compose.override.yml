@@ -1,16 +1,16 @@
 services:
 
   python-service:
-    container_name: energia-fastapi
+    container_name: energia-api
     build:
       context: .
-      dockerfile: ./fastapi/Dockerfile
+      dockerfile: ./api/Dockerfile
     ports:
       - "8000:8000"
     env_file:
-      - ./fastapi/.env
+      - ./api/.env
     volumes:
-      - ./fastapi:/app
+      - ./api:/app
 
   gateway:
     container_name: energia-gateway
