@@ -75,35 +75,157 @@ Pour chaque dimension retenue à l'étape 1, identifiez une source de données r
 - `Streaming/temps réel` : ex. interroger une API météo à chaque requête de prédiction.
 Pour chaque source retenue, précisez si elle relève d'un flux batch ou temps réel, et pourquoi.
 
-Météo : streaming
-Dim région : batch
-Dim évènement : batch
+Les différentes sources de données ne nécessitent pas toutes le même mode de traitement. Nous distinguons les flux batch, adaptés aux données relativement stables ou mises à jour périodiquement, et les flux temps réel, adaptés aux données qui évoluent rapidement et doivent être récupérées au moment de la prédiction.
+
+| Dimension/source | Type de flux | Justification |
+|---|---|---|
+|Météo |	Temps réel |	Les conditions météorologiques peuvent évoluer rapidement. Pour produire une prédiction pertinente, il est préférable de récupérer les informations les plus récentes au moment de la demande.|
+|Dimension régionale |	Batch |	Les informations comme la population, le code INSEE ou la structure industrielle d’une région évoluent lentement. Elles peuvent donc être récupérées et mises à jour périodiquement.|
+|Dimension événementielle	| Batch	| Les événements programmés, comme les matchs ou festivals, peuvent être récupérés à l’avance et intégrés régulièrement dans la base. Les événements négatifs exceptionnels, comme une coupure générale, pourraient toutefois nécessiter une source temps réel s’ils doivent être pris en compte immédiatement. |
+|Dimension temporelle |	Batch / calculée localement |	Les informations comme le jour, l’heure, le mois, la saison ou le week-end sont connues à l’avance et peuvent être directement calculées à partir de la date sans appel à une API externe.|
 
 ## Schématiser le flux de données
-Questions à trancher :
 
-- Le module de prédiction est-il un nouveau microservice séparé, ou une extension du service existant?
-Le module de prédiction sera dans un autre micro-service pour avoir cette séparation :
-  - Analyse prédictive de la consommation pour pouvoir être utilisé par Dijsktra.
-  - Dijsktra lui sert à gérer la distribution en fonction de la prédiction de consommation.
-
-- Comment le résultat de prédiction (ex. additional_demand_mw) est-il transmis au moteur déjà développé ?
-Par une route définit qui à partir d'une plage de date donnée fait une prédiction de consommation mw, qui est envoyé au moteur prescriptif.
 
 - Qui gère les erreurs si une source externe (météo, calendrier) est indisponible (fallback, valeur par défaut, message d'erreur propagé) ?
 Dashboard des alertes pour la vérification des services externes indisponibles. Par la suite code pour gérer les exeptions et réagir sur la perte de données.
 
+## Schématiser le flux de données
+### Séparation du module de prédiction
+
+- Le module de prédiction est-il un nouveau microservice séparé, ou une extension du service existant?
+
+Le module de prédiction sera développé sous la forme d’un microservice séparé du moteur prescriptif.
+
+Cette séparation permet de distinguer clairement deux responsabilités :
+
+ - le microservice de prédiction estime la consommation électrique future à partir des différentes dimensions retenues ;
+ - le moteur prescriptif, basé notamment sur Dijkstra, utilise cette prédiction pour déterminer comment répartir la production entre les centrales disponibles.
+
+Cette architecture facilite la maintenance, les tests et l’évolution de chaque composant indépendamment.
+
+### Transmission de la prédiction au moteur prescriptif
+
+- Comment le résultat de prédiction (ex. additional_demand_mw) est-il transmis au moteur déjà développé ?
+
+Le microservice de prédiction exposera une route permettant de demander une estimation de consommation pour une région et une période données.
+
+Le flux principal devient donc :
+
+```bash
+Sources de données
+        ↓
+Microservice de prédiction
+        ↓
+Prédiction de consommation
+        ↓
+additional_demand_mw
+        ↓
+Moteur prescriptif / Dijkstra
+        ↓
+Répartition de la production
+        ↓
+Gateway
+        ↓
+Interface utilisateur
+```
+
+### Gestion des erreurs des sources externes
+
+Qui gère les erreurs si une source externe (météo, calendrier) est indisponible (fallback, valeur par défaut, message d'erreur propagé) ?
+
+Les indisponibilités des services externes devront être gérées à plusieurs niveaux.
+
+Un système de logs et d’alertes permettra d’identifier les API ou sources devenues indisponibles. Un dashboard de supervision pourra ensuite centraliser l’état des différents services.
+
+Le code devra également gérer les exceptions afin d’éviter qu’une panne d’une seule source bloque systématiquement toute la chaîne de prédiction.
+
+Selon la donnée concernée, plusieurs stratégies pourront être utilisées :
+
+- utiliser la dernière donnée valide connue ;
+- utiliser une valeur par défaut ou une valeur moyenne ;
+- continuer la prédiction sans la variable si le modèle le permet ;
+- renvoyer un message d’erreur explicite si la donnée est indispensable.
+
+Par exemple, si l’API météo est temporairement indisponible, le système pourrait utiliser les dernières données météo enregistrées plutôt que d’interrompre immédiatement la prédiction.
+
 ## Modéliser un schéma de base de données
 
 ## Anticiper les questions opérationnelles
+
+
+### Stockage sécurisé des clés API
+
 - Où et comment stocker les clés API (météo, éventuellement autres) de façon sécurisée (variables d'environnement, jamais en dur dans le code) ?
-.env, sécurisation des routes et mise en place des variables environnements.
+
+Les clés API utilisées par les différents services, par exemple pour la météo, ne doivent jamais être écrites directement dans le code source.
+
+Elles seront stockées dans des variables d’environnement, par exemple via un fichier .env en environnement local. Ce fichier devra être exclu du dépôt Git avec .gitignore.
+
+Dans Docker, ces variables pourront être transmises aux conteneurs via le fichier compose.yaml ou via un mécanisme de gestion de secrets.
+
+Exemple :
+
+```bash
+
+WEATHER_API_KEY=xxxxxxxx
+
+```
+
+Le code :
+
+```bash
+
+import os
+
+api_key = os.getenv("WEATHER_API_KEY")
+
+```
+
+La sécurisation des routes pourra compléter ce dispositif, mais elle ne remplace pas la protection des clés API.
+
+### Comportement si le modèle ML n’est pas entraîné
 
 - Que se passe-t-il si le modèle ML n'est pas encore entraîné au moment de la requête (valeur par défaut, erreur explicite) ?
-Nous choisissons un message explicite "Trop tôt" ou "Attent ton tour", "Merci de patienter", "Vas boire un café", "Tu devrais rentrer chez toi".
+
+Si le modèle n’est pas encore disponible au moment d’une requête, le service ne doit pas retourner une prédiction inventée ou une valeur par défaut qui pourrait être interprétée comme fiable.
+
+Nous choisissons donc de renvoyer une erreur explicite indiquant que le modèle n’est pas encore disponible.
+
+Par exemple :
+```bash 
+{
+  "success": false,
+  "message": "Le modèle de prédiction n'est pas encore entraîné. Veuillez réessayer ultérieurement."
+}
+```
+Côté API, un code HTTP comme 503 Service Unavailable serait cohérent :
+
+```bash 
+raise HTTPException(
+    status_code=503,
+    detail="Le modèle de prédiction n'est pas encore disponible"
+)
+```
+
+### Mise en cache des prédictions
 
 - Faut-il mettre en cache les prédictions récentes pour éviter de recalculer à chaque appel ?
-Oui
+
+Oui, il est pertinent de mettre en cache certaines prédictions récentes.
+
+Cela permet d’éviter de recalculer plusieurs fois une prédiction identique lorsque plusieurs utilisateurs ou services demandent les mêmes informations sur une courte période.
+
+Par exemple, une prédiction pourrait être identifiée par :
+```bash
+région + date + heure
+```
+Ainsi :
+```bash
+Occitanie
+2026-08-10
+18:00
+```
 
 ## Piloter le modèle une fois en production (MLOps)
 Dans l'idéal, on veut tous ! À voir ce qu'on arrive à faire.
