@@ -6,9 +6,56 @@
 réponse : 
 - Dimension temporelle : jour, heure, saisons et mois.
 - Dimension météo : température (min/max par jour)
-- Dimension évent : fériés, vacances, catastrophe naturelle, évenement spécial (culture,sport, ect..), 
+- Dimension évent : évènement positif et évènement négatif, 
 - Dimension régional : démographie, part industrielle lourde, nom de la région, code insee, nombre de central, part électrique hors nucléaire et part nucléaire absolu
+1. Dimension temporelle
 
+Variables envisagées : heure de la journée, jour de la semaine, mois, saison, week-end ou jour ouvré.
+
+Cette dimension est prioritaire car la consommation électrique suit des cycles très marqués. Les besoins ne sont pas les mêmes la nuit, en journée, en semaine ou le week-end, ni en hiver ou en été. Ces données sont également très faciles à obtenir puisqu’elles peuvent être directement extraites de la date et de l’heure associées aux relevés de consommation.
+
+Pertinence attendue : très forte — Facilité d’obtention : très forte.
+
+2. Dimension météorologique
+
+Variables envisagées : température minimale, maximale et moyenne, éventuellement humidité, dans un second temps nous utiliserons une matrice de corrélation pour voir si les intempéries ont un impact.
+
+La météo influence fortement la consommation électrique, notamment à travers le chauffage en hiver et la climatisation en été. Pour un premier modèle, la température semble être la variable météorologique la plus pertinente et la plus simple à exploiter.
+
+Pertinence attendue : très forte — Facilité d’obtention : forte.
+
+Dimension événementielle
+
+Variables envisagées : présence d’un événement, type d’événement et impact attendu sur la consommation.
+
+Nous distinguons deux catégories :
+
+Événements positifs, susceptibles d’entraîner une hausse de la consommation électrique, par exemple un grand match de football, un concert, un festival ou un événement rassemblant beaucoup de personnes.
+Événements négatifs, susceptibles d’entraîner une baisse de la consommation observée, par exemple une coupure générale de courant, un incident majeur sur le réseau ou un arrêt exceptionnel d’activité.
+
+Cette dimension permettrait d’expliquer certaines variations inhabituelles que les seules variables temporelles ou météorologiques ne suffisent pas à expliquer.
+
+Pertinence attendue : moyenne à forte — Facilité d’obtention : moyenne.
+
+4. Dimension géographique et démographique
+
+Variables envisagées : région, code INSEE, population, densité de population.
+
+La consommation dépend directement du nombre d'habitants et du type de territoire. Une région fortement peuplée aura généralement une demande électrique plus importante qu'une région moins peuplée. Le code INSEE permet également de relier facilement les données de consommation à d'autres sources publiques.
+
+Pertinence attendue : forte — Facilité d’obtention : forte.
+
+5. Dimension économique et industrielle
+
+Variables envisagées : part de l'industrie dans l'activité régionale, présence d'industries lourdes, éventuellement nombre d'établissements industriels ou niveau d'activité économique.
+
+Deux régions ayant une population comparable peuvent avoir des consommations très différentes selon leur tissu économique. Une région comprenant beaucoup d'industries énergivores peut présenter une consommation élevée et des profils horaires différents d'une région principalement résidentielle ou tertiaire.
+
+Cette dimension est donc intéressante, mais les données sont légèrement plus complexes à obtenir et à mettre à jour que les dimensions temporelles ou météorologiques.
+
+Pertinence attendue : forte — Facilité d’obtention : moyenne.
+
+Pour un premier modèle de prédiction, nous retenons prioritairement les dimensions temporelle, météorologique, calendrier, géographique/démographique et économique/industrielle. Elles présentent un bon compromis entre leur capacité supposée à expliquer les variations de consommation électrique et la disponibilité des données. 
 
 ## Cartographier les sources de données disponibles
 Pour chaque dimension retenue à l'étape 1, identifiez une source de données réelle et remplissez :
