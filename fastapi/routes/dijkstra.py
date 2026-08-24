@@ -1,8 +1,17 @@
 from fastapi import APIRouter, HTTPException
 
-from graph.datastore import get_store, reload_store
+from graph.datastore import get_store, reload_store, load_datastore
 from graph.serializers import serialize_centrale, serialize_liaison, serialize_region
-from .calcul import calcul_score,repartir_demande,classer_candidats,du_terroire,trouver_liaison,rechercher_centrales_distantes,calcul_distance_region
+from .calcul import (
+    calcul_score,
+    repartir_demande,
+    classer_candidats,
+    du_terroire,
+    trouver_liaison,
+    rechercher_centrales_distantes,
+    calcul_distance_region,
+)
+from pathlib import Path
 
 router = APIRouter(prefix="/dijkstra")
 
@@ -61,7 +70,9 @@ def get_centrale(centrale_id: str):
     store = get_store()
     centrale = store.centrales.get(centrale_id)
     if centrale is None:
-        raise HTTPException(status_code=404, detail=f"Centrale '{centrale_id}' introuvable")
+        raise HTTPException(
+            status_code=404, detail=f"Centrale '{centrale_id}' introuvable"
+        )
     return serialize_centrale(centrale)
 
 
@@ -121,14 +132,16 @@ def run_simulation(region: str, augmentation_mw: float):
             technical_penalty=central.technical_penalty,
             plant_id=central.id,
             local_plant_ids=region_data.local_plant_ids,
-            initial_output_mw=central.initial_output_mw
+            initial_output_mw=central.initial_output_mw,
         )
-        candidats.append({
-            "plant_id": central.id,
-            "score": result,
-            "soft_upper_bound_mw": central.soft_upper_bound_mw,
-            "initial_output_mw": central.initial_output_mw,
-        })
+        candidats.append(
+            {
+                "plant_id": central.id,
+                "score": result,
+                "soft_upper_bound_mw": central.soft_upper_bound_mw,
+                "initial_output_mw": central.initial_output_mw,
+            }
+        )
 
     # --- Centrales externes
     if central_locales:
@@ -137,7 +150,8 @@ def run_simulation(region: str, augmentation_mw: float):
             source_id, region_data.external_entry_plant_ids, store
         )
         for d in distantes:
-            if d["plant_id"] in region_data.local_plant_ids: continue
+            if d["plant_id"] in region_data.local_plant_ids:
+                continue
             central = store.centrales.get(d["plant_id"])
             if central is None:
                 continue
@@ -149,14 +163,16 @@ def run_simulation(region: str, augmentation_mw: float):
                 technical_penalty=central.technical_penalty,
                 plant_id=central.id,
                 local_plant_ids=region_data.local_plant_ids,
-                initial_output_mw=central.initial_output_mw
+                initial_output_mw=central.initial_output_mw,
             )
-            candidats.append({
-                "plant_id": central.id,
-                "score": result,
-                "soft_upper_bound_mw": central.soft_upper_bound_mw,
-                "initial_output_mw": central.initial_output_mw,
-            })
+            candidats.append(
+                {
+                    "plant_id": central.id,
+                    "score": result,
+                    "soft_upper_bound_mw": central.soft_upper_bound_mw,
+                    "initial_output_mw": central.initial_output_mw,
+                }
+            )
     else:
         note = (
             "Aucune centrale locale dans cette région : la distance vers les "
@@ -171,20 +187,22 @@ def run_simulation(region: str, augmentation_mw: float):
             if plant_id in region_data.local_plant_ids:
                 continue
             result = calcul_score(
-                geodesic_distance_km = calcul_distance_region(region_data,central),
+                geodesic_distance_km=calcul_distance_region(region_data, central),
                 loss_percent=0,
                 soft_upper_bound_mw=central.soft_upper_bound_mw,
                 technical_penalty=central.technical_penalty,
                 plant_id=central.id,
                 local_plant_ids=region_data.local_plant_ids,
-                initial_output_mw=central.initial_output_mw
+                initial_output_mw=central.initial_output_mw,
             )
-            candidats.append({
-                "plant_id": central.id,
-                "score": result,
-                "soft_upper_bound_mw": central.soft_upper_bound_mw,
-                "initial_output_mw": central.initial_output_mw,
-            })
+            candidats.append(
+                {
+                    "plant_id": central.id,
+                    "score": result,
+                    "soft_upper_bound_mw": central.soft_upper_bound_mw,
+                    "initial_output_mw": central.initial_output_mw,
+                }
+            )
 
     candidats_tries = classer_candidats(candidats)
     resultat = repartir_demande(augmentation_mw, candidats_tries)
@@ -193,7 +211,7 @@ def run_simulation(region: str, augmentation_mw: float):
         "region": region,
         "demande_mw": augmentation_mw,
         "repartition": resultat["allocation"],
-        "puissance_manquante_mw": resultat["unsatisfied_mw"]
+        "puissance_manquante_mw": resultat["unsatisfied_mw"],
     }
     if note:
         reponse["note"] = note
