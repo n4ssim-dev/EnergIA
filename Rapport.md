@@ -7,7 +7,7 @@ réponse :
 - Dimension temporelle : jour, heure, saisons et mois.
 - Dimension météo : température (min/max par jour)
 - Dimension évent : fériés, vacances, catastrophe naturelle, évenement spécial (culture,sport, ect..), 
-- Dimension régional : démographie, part industrielle lourd, nom de la région, code insee, nombre de central part électrique hors nucléaire et part nucléaire absolu
+- Dimension régional : démographie, part industrielle lourde, nom de la région, code insee, nombre de central, part électrique hors nucléaire et part nucléaire absolu
 
 
 ## Cartographier les sources de données disponibles
