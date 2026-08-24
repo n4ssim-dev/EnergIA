@@ -17,6 +17,7 @@ class DataStore:
         self.centrales = {}
         self.regions = {}
         self.liaisons = []
+        self.timestamps = []  
         self.graph = Graph()
 
     def load(self, path=DATA_PATH):
