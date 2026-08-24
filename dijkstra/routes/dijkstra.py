@@ -1,8 +1,10 @@
 from fastapi import APIRouter, HTTPException
 
-from graph.datastore import get_store, reload_store
+from graph.datastore import get_store, reload_store,load_datastore
 from graph.serializers import serialize_centrale, serialize_liaison, serialize_region
 from .calcul import calcul_score,repartir_demande,classer_candidats,du_terroire,trouver_liaison,rechercher_centrales_distantes,calcul_distance_region
+
+from pathlib import Path
 
 router = APIRouter(prefix="/dijkstra")
 
@@ -185,3 +187,35 @@ def get_calcule(region: str, augmentation_mw: float):
         "repartition": resultat["allocation"],
         "puissance_manquante_mw": resultat["unsatisfied_mw"]
     }
+    
+
+
+# Fonction qui retourne la consommation de chaque region pour chaque quart d'heure
+def regions_consommations(regions, timestamps):
+    resultats = []
+
+    for region in regions:
+        nom_region = region["name"]
+        consommations = region["consumption_mw"]
+
+        for i in range(len(consommations)):
+            resultats.append(
+                {
+                    "region": nom_region,
+                    "quart_heure": timestamps[i],
+                    "consommation_mw": consommations[i],
+                }
+            )
+
+    return resultats
+
+@router.get("/consommations")
+def calculer():
+    DATA_PATH = Path(__file__).parent.parent / "data" / "energia-journee-reference-consommation.json"
+    result =  load_datastore(DATA_PATH)
+    # regions = result.regions
+    # timestamps = result.timestamps
+    # result = regions_consommations(regions, timestamps)
+    return {
+            "result" : result
+            }
