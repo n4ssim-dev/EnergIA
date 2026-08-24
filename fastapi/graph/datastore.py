@@ -7,7 +7,6 @@ from .parsing import parse_centrale, parse_liaison, parse_region
 
 DATA_PATH = Path(__file__).parent.parent / "data" / "data.json"
 
-
 # Conteneur central (centrales, régions, liaisons et graphe associé)
 
 class DataStore:
