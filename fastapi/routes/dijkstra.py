@@ -1,4 +1,6 @@
+import json 
 from fastapi import APIRouter, HTTPException
+from pathlib import Path
 
 from graph.datastore import get_store, reload_store, load_datastore
 from graph.serializers import serialize_centrale, serialize_liaison, serialize_region
@@ -15,6 +17,46 @@ from pathlib import Path
 
 router = APIRouter(prefix="/dijkstra")
 
+def charger_journee_reference():
+    with open(
+        "data/energia-journee-reference-consommation.json","r", encoding="utf-8") as fichier:
+        donnees = json.load(fichier)
+    return donnees
+
+
+def recuperer_consommations_par_temps(donnees, index):
+    consommations = {}
+
+    for region in donnees["regions"]:
+        consommations[region["id"]] = region["consumption_mw"][index]
+    return consommations
+
+
+def parcourir_journee(donnees):
+    resultats = []
+
+    for index in range(len(donnees["timestamps"])):
+        heure = donnees["timestamps"][index]
+
+        consommations = recuperer_consommations_par_temps( donnees, index)
+
+        resultats.append({
+            "heure": heure,
+            "consommations": consommations,
+        })
+    return resultats
+
+@router.get("/consommation-journee")
+def consommation_journee():
+    donnees = charger_journee_reference()
+
+    resultats = parcourir_journee(donnees)
+
+    return {
+        "nombre_etape": len(resultats),
+        "journee": resultats
+    }
+    
 
 @router.get("/load-datastore")
 def load_datastore_route():
@@ -217,7 +259,6 @@ def run_simulation(region: str, augmentation_mw: float):
         reponse["note"] = note
 
     return reponse
-
 
 @router.get("/calcule")
 def get_calcule(region: str, augmentation_mw: float):
