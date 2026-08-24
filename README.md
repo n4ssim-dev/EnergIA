@@ -269,3 +269,26 @@ flamanville -> chinon -> saint_laurent -> belleville -> bugey -> tricastin (949.
   shortest-path). Ça vérifie que ça tourne, pas que c'est juste dans
   tous les cas.
 
+### Nouvelle étape :
+
+```bash
+Charger le JSON de consommation
+        ↓
+Charger l’état initial du parc nucléaire
+        ↓
+Pour chaque index de 0 à 95
+        ↓
+Récupérer le timestamp correspondant
+        ↓
+Récupérer la consommation de chaque région à cet index
+        ↓
+Donner ces besoins au moteur prescriptif
+        ↓
+Le moteur calcule la nouvelle production des centrales
+        ↓
+Respect des min/max et des rampes
+        ↓
+Conserver le nouvel état des centrales
+        ↓
+Utiliser cet état au tour suivant
+```
