@@ -1,4 +1,5 @@
 from haversine import haversine
+import json
 
 
 # ---------------------------------------------------------------------------
@@ -155,3 +156,12 @@ def calcul_distance_region(region_data, central):
     centralPosition=(centralLatitude,centralLongitude)
     result = haversine(regionPosition,centralPosition)
     return (result)
+
+# ---------------------------------------------------------------------------
+# 11. Import du JSON
+# ---------------------------------------------------------------------------
+def charger_journee_reference():
+    with open("data/energia-production-non-pilotable.json", "r", encoding="utf-8") as fichier:
+        donnees = json.load(fichier)
+
+    return donnees
