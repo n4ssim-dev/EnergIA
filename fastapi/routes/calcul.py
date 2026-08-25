@@ -321,3 +321,23 @@ def calculer_evolutions_regions(consommations_precedentes,consommations_actuelle
         evolutions[region_id] = evolution
 
     return evolutions
+
+# ---------------------------------------------------------------------------
+# 18. Calcul du besoin en nucléaire par région
+# ---------------------------------------------------------------------------
+def calcul_production_restante_a_fournir(parcourir_journee,production_hors_nucleaire):
+    total_production_restante = {}
+
+    for region_id in production_hors_nucleaire:
+        total_production_restante[region_id] = []
+
+        for index in range(96):
+            total = (
+                parcourir_journee[index]["consommations"][region_id]
+                - production_hors_nucleaire[region_id][index]
+            )
+
+            total_production_restante[region_id].append(total)
+
+    return total_production_restante
+   
