@@ -1,6 +1,4 @@
-import json 
 from fastapi import APIRouter, HTTPException
-from pathlib import Path
 
 from graph.datastore import get_store, reload_store, load_datastore
 from graph.serializers import serialize_centrale, serialize_liaison, serialize_region
@@ -23,12 +21,41 @@ from .calcul import (
     production_hors_nucleaire,
     recuperer_donnees_solaires,
     recuperer_donnees_eolien,
-    charger_journee_reference_hors_nucleaire
+    charger_journee_reference_hors_nucleaire,
+    calcul_production_restante_a_fournir,
 )
-from pathlib import Path
 
 router = APIRouter(prefix="/dijkstra")
 
+@router.get("/production-restante")
+def get_production_restante():
+
+    donnees_consommation = charger_journee_reference()
+    donnees_non_pilotables = charger_journee_reference_hors_nucleaire()
+
+    consommations = parcourir_journee(donnees_consommation)
+
+    production_solaire = recuperer_donnees_solaires(
+        donnees_non_pilotables
+    )
+
+    production_eolien = recuperer_donnees_eolien(
+        donnees_non_pilotables
+    )
+
+    production_non_pilotable = production_hors_nucleaire(
+        production_solaire,
+        production_eolien
+    )
+
+    production_restante = calcul_production_restante_a_fournir(
+        consommations,
+        production_non_pilotable
+    )
+
+    return {
+        "production_restante_a_fournir": production_restante
+    }
 
 @router.get("/load-datastore")
 def load_datastore_route():
