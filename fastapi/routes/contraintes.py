@@ -29,3 +29,8 @@ def calcul_vitesse_montee(centrale) :
 def calcul_vitesse_descente(centrale) :
     rampDown = calcul_vitesse_montee(centrale)
     return(rampDown)
+
+def constraint (puissance_precedente, puissance_souhaitee, centrale) :
+    if puissance_souhaitee > puissance_precedente :
+        
+    else 
