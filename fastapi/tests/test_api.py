@@ -7,14 +7,29 @@ client = TestClient(app)
 AUTH_HEADERS = {"x-password": "5"}
 
 
+def test_home():
+    response = client.get("/")
+    assert response.status_code == 200
+
+
 def test_health():
     response = client.get("/health")
     assert response.status_code == 200
     assert response.json() == {"status": "healthy"}
 
 
+def test_protected_route_without_password():
+    response = client.get("/dijkstra/centrales")
+    assert response.status_code == 401
+
+
+def test_protected_route_wrong_password():
+    response = client.get("/dijkstra/centrales", headers={"x-password": "wrong"})
+    assert response.status_code == 401
+
+
 def test_load_datastore():
-    response = client.get("/dijkstra/load-datastore")
+    response = client.get("/dijkstra/load-datastore", headers=AUTH_HEADERS)
     assert response.status_code == 200
 
     body = response.json()
@@ -28,6 +43,7 @@ def test_shortest_path_ok():
     response = client.get(
         "/dijkstra/shortest-path",
         params={"from_node": "flamanville", "to_node": "tricastin"},
+        headers=AUTH_HEADERS,
     )
     assert response.status_code == 200
 
@@ -43,6 +59,7 @@ def test_shortest_path_same_node():
     response = client.get(
         "/dijkstra/shortest-path",
         params={"from_node": "bugey", "to_node": "bugey"},
+        headers=AUTH_HEADERS,
     )
     assert response.status_code == 200
 
@@ -55,17 +72,20 @@ def test_shortest_path_unknown_node():
     response = client.get(
         "/dijkstra/shortest-path",
         params={"from_node": "atlantide", "to_node": "bugey"},
+        headers=AUTH_HEADERS,
     )
     assert response.status_code == 404
 
 
 def test_shortest_path_missing_params():
-    response = client.get("/dijkstra/shortest-path", params={"from_node": "bugey"})
+    response = client.get(
+        "/dijkstra/shortest-path", params={"from_node": "bugey"}, headers=AUTH_HEADERS
+    )
     assert response.status_code == 422
 
 
 def test_rapport():
-    response = client.get("/dijkstra/rapport")
+    response = client.get("/dijkstra/rapport", headers=AUTH_HEADERS)
     assert response.status_code == 200
 
     body = response.json()
@@ -77,7 +97,7 @@ def test_rapport():
 
 
 def test_liste_centrales():
-    response = client.get("/dijkstra/centrales")
+    response = client.get("/dijkstra/centrales", headers=AUTH_HEADERS)
     assert response.status_code == 200
 
     body = response.json()
@@ -86,7 +106,7 @@ def test_liste_centrales():
 
 
 def test_get_centrale_ok():
-    response = client.get("/dijkstra/centrales/bugey")
+    response = client.get("/dijkstra/centrales/bugey", headers=AUTH_HEADERS)
     assert response.status_code == 200
 
     body = response.json()
@@ -95,12 +115,12 @@ def test_get_centrale_ok():
 
 
 def test_get_centrale_unknown():
-    response = client.get("/dijkstra/centrales/atlantide")
+    response = client.get("/dijkstra/centrales/atlantide", headers=AUTH_HEADERS)
     assert response.status_code == 404
 
 
 def test_liste_regions():
-    response = client.get("/dijkstra/regions")
+    response = client.get("/dijkstra/regions", headers=AUTH_HEADERS)
     assert response.status_code == 200
 
     body = response.json()
@@ -109,18 +129,18 @@ def test_liste_regions():
 
 
 def test_get_region_ok():
-    response = client.get("/dijkstra/regions/ile_de_france")
+    response = client.get("/dijkstra/regions/ile_de_france", headers=AUTH_HEADERS)
     assert response.status_code == 200
     assert response.json()["id"] == "ile_de_france"
 
 
 def test_get_region_unknown():
-    response = client.get("/dijkstra/regions/atlantide")
+    response = client.get("/dijkstra/regions/atlantide", headers=AUTH_HEADERS)
     assert response.status_code == 404
 
 
 def test_liste_liaisons():
-    response = client.get("/dijkstra/liaisons")
+    response = client.get("/dijkstra/liaisons", headers=AUTH_HEADERS)
     assert response.status_code == 200
 
     body = response.json()
@@ -129,7 +149,7 @@ def test_liste_liaisons():
 
 
 def test_anomalies():
-    response = client.get("/dijkstra/anomalies")
+    response = client.get("/dijkstra/anomalies", headers=AUTH_HEADERS)
     assert response.status_code == 200
 
     body = response.json()
@@ -140,6 +160,7 @@ def test_calcule():
     response = client.get(
         "/dijkstra/calcule",
         params={"region": "centre_val_de_loire", "augmentation_mw": 100},
+        headers=AUTH_HEADERS,
     )
     assert response.status_code == 200
 
