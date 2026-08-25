@@ -2,7 +2,7 @@ from fastapi import APIRouter, HTTPException
 
 from graph.datastore import get_store, reload_store
 from graph.serializers import serialize_centrale, serialize_liaison, serialize_region
-from .calcul import calcul_score,repartir_demande,classer_candidats,du_terroire,trouver_liaison,rechercher_centrales_distantes,calcul_distance_region
+from ...fastapi.routes.calcul import calcul_score,repartir_demande,classer_candidats,du_terroire,trouver_liaison,rechercher_centrales_distantes,calcul_distance_region
 
 router = APIRouter(prefix="/dijkstra")
 

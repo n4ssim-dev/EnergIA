@@ -155,3 +155,4 @@ def calcul_distance_region(region_data, central):
     centralPosition=(centralLatitude,centralLongitude)
     result = haversine(regionPosition,centralPosition)
     return (result)
+

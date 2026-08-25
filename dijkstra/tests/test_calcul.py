@@ -1,4 +1,4 @@
-from routes.calcul import calcul_puissanceDispo, calcul_taux_saturation, repartir_demande
+from fastapi.routes.calcul import calcul_puissanceDispo, calcul_taux_saturation, repartir_demande
 
 
 # Vérifier si le calcul de la puissance restante marche correctement
