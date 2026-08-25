@@ -2,9 +2,18 @@ import json
 from fastapi import APIRouter, HTTPException
 from pathlib import Path
 
-from graph.datastore import get_store, reload_store
+from graph.datastore import get_store, reload_store, load_datastore
 from graph.serializers import serialize_centrale, serialize_liaison, serialize_region
-from .calcul import calcul_score,repartir_demande,classer_candidats,du_terroire,trouver_liaison,rechercher_centrales_distantes,calcul_distance_region
+from .calcul import (
+    calcul_score,
+    repartir_demande,
+    classer_candidats,
+    du_terroire,
+    trouver_liaison,
+    rechercher_centrales_distantes,
+    calcul_distance_region,
+)
+from pathlib import Path
 
 router = APIRouter(prefix="/dijkstra")
 
@@ -103,7 +112,9 @@ def get_centrale(centrale_id: str):
     store = get_store()
     centrale = store.centrales.get(centrale_id)
     if centrale is None:
-        raise HTTPException(status_code=404, detail=f"Centrale '{centrale_id}' introuvable")
+        raise HTTPException(
+            status_code=404, detail=f"Centrale '{centrale_id}' introuvable"
+        )
     return serialize_centrale(centrale)
 
 
@@ -147,8 +158,8 @@ def run_simulation(region: str, augmentation_mw: float):
         raise HTTPException(status_code=404, detail=f"Région '{region}' introuvable")
 
     candidats = []
+    #  initialiser note
     note = None
-
     # --- Centrales locales (distance = 0, pertes = 0) ---
     central_locales = []
     for plant_id in region_data.local_plant_ids:
@@ -164,14 +175,16 @@ def run_simulation(region: str, augmentation_mw: float):
             technical_penalty=central.technical_penalty,
             plant_id=central.id,
             local_plant_ids=region_data.local_plant_ids,
-            initial_output_mw=central.initial_output_mw
+            initial_output_mw=central.initial_output_mw,
         )
-        candidats.append({
-            "plant_id": central.id,
-            "score": result,
-            "soft_upper_bound_mw": central.soft_upper_bound_mw,
-            "initial_output_mw": central.initial_output_mw,
-        })
+        candidats.append(
+            {
+                "plant_id": central.id,
+                "score": result,
+                "soft_upper_bound_mw": central.soft_upper_bound_mw,
+                "initial_output_mw": central.initial_output_mw,
+            }
+        )
 
     # --- Centrales externes
     if central_locales:
@@ -180,7 +193,8 @@ def run_simulation(region: str, augmentation_mw: float):
             source_id, region_data.external_entry_plant_ids, store
         )
         for d in distantes:
-            if d["plant_id"] in region_data.local_plant_ids: continue
+            if d["plant_id"] in region_data.local_plant_ids:
+                continue
             central = store.centrales.get(d["plant_id"])
             if central is None:
                 continue
@@ -192,14 +206,16 @@ def run_simulation(region: str, augmentation_mw: float):
                 technical_penalty=central.technical_penalty,
                 plant_id=central.id,
                 local_plant_ids=region_data.local_plant_ids,
-                initial_output_mw=central.initial_output_mw
+                initial_output_mw=central.initial_output_mw,
             )
-            candidats.append({
-                "plant_id": central.id,
-                "score": result,
-                "soft_upper_bound_mw": central.soft_upper_bound_mw,
-                "initial_output_mw": central.initial_output_mw,
-            })
+            candidats.append(
+                {
+                    "plant_id": central.id,
+                    "score": result,
+                    "soft_upper_bound_mw": central.soft_upper_bound_mw,
+                    "initial_output_mw": central.initial_output_mw,
+                }
+            )
     else:
         note = (
             "Aucune centrale locale dans cette région : la distance vers les "
@@ -214,20 +230,22 @@ def run_simulation(region: str, augmentation_mw: float):
             if plant_id in region_data.local_plant_ids:
                 continue
             result = calcul_score(
-                geodesic_distance_km = calcul_distance_region(region_data,central),
+                geodesic_distance_km=calcul_distance_region(region_data, central),
                 loss_percent=0,
                 soft_upper_bound_mw=central.soft_upper_bound_mw,
                 technical_penalty=central.technical_penalty,
                 plant_id=central.id,
                 local_plant_ids=region_data.local_plant_ids,
-                initial_output_mw=central.initial_output_mw
+                initial_output_mw=central.initial_output_mw,
             )
-            candidats.append({
-                "plant_id": central.id,
-                "score": result,
-                "soft_upper_bound_mw": central.soft_upper_bound_mw,
-                "initial_output_mw": central.initial_output_mw,
-            })
+            candidats.append(
+                {
+                    "plant_id": central.id,
+                    "score": result,
+                    "soft_upper_bound_mw": central.soft_upper_bound_mw,
+                    "initial_output_mw": central.initial_output_mw,
+                }
+            )
 
     candidats_tries = classer_candidats(candidats)
     resultat = repartir_demande(augmentation_mw, candidats_tries)
@@ -236,7 +254,7 @@ def run_simulation(region: str, augmentation_mw: float):
         "region": region,
         "demande_mw": augmentation_mw,
         "repartition": resultat["allocation"],
-        "puissance_manquante_mw": resultat["unsatisfied_mw"]
+        "puissance_manquante_mw": resultat["unsatisfied_mw"],
     }
     if note:
         reponse["note"] = note
@@ -246,3 +264,33 @@ def run_simulation(region: str, augmentation_mw: float):
 @router.get("/calcule")
 def get_calcule(region: str, augmentation_mw: float):
     return run_simulation(region, augmentation_mw)
+
+# ----------------------------------------------------------------------------------------------------------------------
+# Automatiser la simulation  pour qu'il fasse l'ensemble des régions (13)
+# au meme moment pour une meme quart d'heure
+#------------------------------------------------------------------------------------------------------
+@router.get("/simulation-regions")
+def calculer_regions():
+    donnees = charger_journee_reference()
+    journee = parcourir_journee(donnees)
+
+    resultats = []
+
+    for etape in journee:
+        heure = etape["heure"]
+        demandes = etape["consommations"]
+
+        resultats_heure = {}
+
+        for region_id, demande in demandes.items():
+            resultats_heure[region_id] = run_simulation(region_id,demande)
+
+        resultats.append({
+            "heure": heure,
+            "regions": resultats_heure
+        })
+
+    return {
+        "nombre_etapes": len(resultats),
+        "journee": resultats
+    }
