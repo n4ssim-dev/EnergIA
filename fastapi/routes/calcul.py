@@ -165,3 +165,46 @@ def charger_journee_reference():
         donnees = json.load(fichier)
 
     return donnees
+
+# ---------------------------------------------------------------------------
+# 12. Récupération des données du solaire
+# ---------------------------------------------------------------------------
+def recuperer_donnees_solaires(donnees):
+    production_solaire = {}
+
+    for region in donnees["regions"]:
+        region_id = region ["id"]
+        production_solaire[region_id] = region["production_mw"]["solar"]
+
+    return production_solaire
+
+# ---------------------------------------------------------------------------
+# 13. Récupération des données de l'héolien
+# ---------------------------------------------------------------------------
+def recuperer_donnees_eolien(donnees):
+    production_eolien = {}
+
+    for region in donnees["regions"]:
+        region_id = region ["id"]
+        production_eolien[region_id] = region["production_mw"]["wind"]
+
+    return production_eolien
+
+# ---------------------------------------------------------------------------
+# 14. Calcul de la production énergétique hors nucléaire
+# ---------------------------------------------------------------------------
+
+def production_hors_nucleaire(production_solaire, production_eolien):
+    total_production = [0] * 96
+
+    for region_id in production_solaire:
+        for index in range(96):
+            total_production[index] += (
+                production_solaire[region_id][index] + production_eolien[region_id][index]
+            )
+
+    return total_production
+
+# ---------------------------------------------------------------------------
+# 14. Calcul de la production énergétique hors nucléaire
+# ---------------------------------------------------------------------------
