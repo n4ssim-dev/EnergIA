@@ -17,41 +17,18 @@ from .calcul import (
     calculer_evolution_consommation,
     calculer_evolutions_regions,
     recuperer_consommations_par_temps,
-    parcourir_journee
+    parcourir_journee,
+    parcourir_journee_solaire,
+    parcourir_journee_eolien,
+    production_hors_nucleaire,
+    recuperer_donnees_solaires,
+    recuperer_donnees_eolien,
+    charger_journee_reference_hors_nucleaire
 )
 from pathlib import Path
 
 router = APIRouter(prefix="/dijkstra")
 
-
-@router.get("/test-journee")
-def test_journee():
-    donnees = charger_journee_reference()
-
-    consommations_precedentes = recuperer_consommations_initiales(donnees)
-
-    consommations_actuelles = recuperer_consommations_par_temps(donnees, 0)
-
-    evolutions = calculer_evolutions_regions(consommations_precedentes, consommations_actuelles)
-
-    return {
-        "heure": donnees["timestamps"][0],
-        "consommations_precedentes": consommations_precedentes,
-        "consommations_actuelles": consommations_actuelles,
-        "evolutions": evolutions
-    }
-
-@router.get("/consommation-journee")
-def consommation_journee():
-    donnees = charger_journee_reference()
-
-    resultats = parcourir_journee(donnees)
-
-    return {
-        "nombre_etape": len(resultats),
-        "journee": resultats
-    }
-    
 
 @router.get("/load-datastore")
 def load_datastore_route():
@@ -288,4 +265,25 @@ def calculer_regions():
     return {
         "nombre_etapes": len(resultats),
         "journee": resultats
+    }
+
+# ---------------------------------------------------------------------------
+# Exposition de la production énergies hors nucléaire par /4 d'heure et par région
+# ---------------------------------------------------------------------------
+@router.get("/production-non-pilotable")
+def get_production_non_pilotable():
+    donnees = charger_journee_reference_hors_nucleaire()
+
+    production_solaire = recuperer_donnees_solaires(donnees)
+    production_eolien = recuperer_donnees_eolien(donnees)
+
+    total_hors_nucleaire = production_hors_nucleaire(
+        production_solaire,
+        production_eolien
+    )
+
+    return {
+        "solaire": production_solaire,
+        "eolien": production_eolien,
+        "solaire_plus_eolien": total_hors_nucleaire
     }

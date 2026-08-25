@@ -160,7 +160,7 @@ def calcul_distance_region(region_data, central):
 # ---------------------------------------------------------------------------
 # 11. Import des JSON
 # ---------------------------------------------------------------------------
-def charger_journee_reference():
+def charger_journee_reference_hors_nucleaire():
     with open("data/energia-production-non-pilotable.json", "r", encoding="utf-8") as fichier:
         donnees_hors_nucleaire = json.load(fichier)
 
@@ -173,7 +173,7 @@ def charger_journee_reference():
     return donnees
 
 # ---------------------------------------------------------------------------
-# 12. Récupération des données du solaire
+# 12. Récupération des données du solaire en /4 d'heure
 # ---------------------------------------------------------------------------
 def recuperer_donnees_solaires(donnees_hors_nucleaire):
     production_solaire = {}
@@ -184,8 +184,23 @@ def recuperer_donnees_solaires(donnees_hors_nucleaire):
 
     return production_solaire
 
+def parcourir_journee_solaire(donnees_hors_nucleaire):
+    resultats = []
+
+    for index in range(len(donnees_hors_nucleaire["timestamps"])):
+        heure = donnees_hors_nucleaire["timestamps"][index]
+
+        production = recuperer_donnees_solaires( donnees_hors_nucleaire, index)
+
+        resultats.append({
+            "heure": heure,
+            "consommations": production,
+        })
+    return resultats
+
+
 # ---------------------------------------------------------------------------
-# 13. Récupération des données de l'héolien
+# 13. Récupération des données de l'héolien en /4 d'heure
 # ---------------------------------------------------------------------------
 def recuperer_donnees_eolien(donnees_hors_nucleaire):
     production_eolien = {}
@@ -196,18 +211,37 @@ def recuperer_donnees_eolien(donnees_hors_nucleaire):
 
     return production_eolien
 
+def parcourir_journee_eolien(donnees_hors_nucleaire):
+    resultats = []
+
+    for index in range(len(donnees_hors_nucleaire["timestamps"])):
+        heure = donnees_hors_nucleaire["timestamps"][index]
+
+        production = recuperer_donnees_eolien( donnees_hors_nucleaire, index)
+
+        resultats.append({
+            "heure": heure,
+            "consommations": production,
+        })
+    return resultats
+
 # ---------------------------------------------------------------------------
 # 14. Calcul de la production énergétique hors nucléaire
 # ---------------------------------------------------------------------------
 
 def production_hors_nucleaire(production_solaire, production_eolien):
-    total_production = [0] * 96
+    total_production = {}
 
     for region_id in production_solaire:
+        total_production[region_id] = []
+
         for index in range(96):
-            total_production[index] += (
-                production_solaire[region_id][index] + production_eolien[region_id][index]
+            total = (
+                production_solaire[region_id][index]
+                + production_eolien[region_id][index]
             )
+
+            total_production[region_id].append(total)
 
     return total_production
 
