@@ -158,7 +158,8 @@ def run_simulation(region: str, augmentation_mw: float):
         raise HTTPException(status_code=404, detail=f"Région '{region}' introuvable")
 
     candidats = []
-
+    #  initialiser note
+    note = None
     # --- Centrales locales (distance = 0, pertes = 0) ---
     central_locales = []
     for plant_id in region_data.local_plant_ids:
@@ -263,3 +264,33 @@ def run_simulation(region: str, augmentation_mw: float):
 @router.get("/calcule")
 def get_calcule(region: str, augmentation_mw: float):
     return run_simulation(region, augmentation_mw)
+
+# ----------------------------------------------------------------------------------------------------------------------
+# Automatiser la simulation  pour qu'il fasse l'ensemble des régions (13)
+# au meme moment pour une meme quart d'heure
+#------------------------------------------------------------------------------------------------------
+@router.get("/simulation-regions")
+def calculer_regions():
+    donnees = charger_journee_reference()
+    journee = parcourir_journee(donnees)
+
+    resultats = []
+
+    for etape in journee:
+        heure = etape["heure"]
+        demandes = etape["consommations"]
+
+        resultats_heure = {}
+
+        for region_id, demande in demandes.items():
+            resultats_heure[region_id] = run_simulation(region_id,demande)
+
+        resultats.append({
+            "heure": heure,
+            "regions": resultats_heure
+        })
+
+    return {
+        "nombre_etapes": len(resultats),
+        "journee": resultats
+    }
