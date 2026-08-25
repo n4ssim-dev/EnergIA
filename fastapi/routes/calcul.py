@@ -158,10 +158,16 @@ def calcul_distance_region(region_data, central):
     return (result)
 
 # ---------------------------------------------------------------------------
-# 11. Import du JSON
+# 11. Import des JSON
 # ---------------------------------------------------------------------------
 def charger_journee_reference():
     with open("data/energia-production-non-pilotable.json", "r", encoding="utf-8") as fichier:
+        donnees_hors_nucleaire = json.load(fichier)
+
+    return donnees_hors_nucleaire
+
+def charger_journee_reference():
+    with open("data/energia-journee-reference-avec-t-moins-1.json", "r", encoding="utf-8") as fichier:
         donnees = json.load(fichier)
 
     return donnees
@@ -169,10 +175,10 @@ def charger_journee_reference():
 # ---------------------------------------------------------------------------
 # 12. Récupération des données du solaire
 # ---------------------------------------------------------------------------
-def recuperer_donnees_solaires(donnees):
+def recuperer_donnees_solaires(donnees_hors_nucleaire):
     production_solaire = {}
 
-    for region in donnees["regions"]:
+    for region in donnees_hors_nucleaire["regions"]:
         region_id = region ["id"]
         production_solaire[region_id] = region["production_mw"]["solar"]
 
@@ -181,10 +187,10 @@ def recuperer_donnees_solaires(donnees):
 # ---------------------------------------------------------------------------
 # 13. Récupération des données de l'héolien
 # ---------------------------------------------------------------------------
-def recuperer_donnees_eolien(donnees):
+def recuperer_donnees_eolien(donnees_hors_nucleaire):
     production_eolien = {}
 
-    for region in donnees["regions"]:
+    for region in donnees_hors_nucleaire["regions"]:
         region_id = region ["id"]
         production_eolien[region_id] = region["production_mw"]["wind"]
 
@@ -206,5 +212,55 @@ def production_hors_nucleaire(production_solaire, production_eolien):
     return total_production
 
 # ---------------------------------------------------------------------------
-# 14. Calcul de la production énergétique hors nucléaire
+# 15. Récupération de la consommation initiales pour chaque région
 # ---------------------------------------------------------------------------
+def recuperer_consommations_initiales(donnees):
+    consommations_initiales = {}
+
+    for region_id, region in donnees["initial_state_t_minus_1"]["regions"].items():
+        consommations_initiales[region_id] = region["consumption_mw"]
+
+    return consommations_initiales
+
+# ---------------------------------------------------------------------------
+# 16. Récupération du la consommation par région en /4 d'heure
+# ---------------------------------------------------------------------------
+def recuperer_consommations_par_temps(donnees, index):
+    consommations = {}
+
+    for region in donnees["regions"]:
+        consommations[region["id"]] = region["consumption_mw"][index]
+    return consommations
+
+# ---------------------------------------------------------------------------
+# 17. Evolution de la consommation des régions sur une journée
+# ---------------------------------------------------------------------------
+def parcourir_journee(donnees):
+    resultats = []
+
+    for index in range(len(donnees["timestamps"])):
+        heure = donnees["timestamps"][index]
+
+        consommations = recuperer_consommations_par_temps( donnees, index)
+
+        resultats.append({
+            "heure": heure,
+            "consommations": consommations,
+        })
+    return resultats
+
+# ---------------------------------------------------------------------------
+# 18. Calcul du delta de la consommation par région en /4 d'heure
+# ---------------------------------------------------------------------------
+def calculer_evolution_consommation(consommation_precedente, consommation_actuelle):
+    return consommation_actuelle - consommation_precedente
+
+def calculer_evolutions_regions(consommations_precedentes,consommations_actuelles):
+    evolutions = {}
+
+    for region_id in consommations_actuelles:
+        evolution = calculer_evolution_consommation(consommations_precedentes[region_id], consommations_actuelles[region_id])
+
+        evolutions[region_id] = evolution
+
+    return evolutions

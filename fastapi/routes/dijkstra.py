@@ -12,60 +12,17 @@ from .calcul import (
     trouver_liaison,
     rechercher_centrales_distantes,
     calcul_distance_region,
+    charger_journee_reference,
+    recuperer_consommations_initiales,
+    calculer_evolution_consommation,
+    calculer_evolutions_regions,
+    recuperer_consommations_par_temps,
+    parcourir_journee
 )
 from pathlib import Path
 
 router = APIRouter(prefix="/dijkstra")
 
-
-def charger_journee_reference():
-    with open("data/energia-journee-reference-avec-t-moins-1.json", "r", encoding="utf-8") as fichier:
-        donnees = json.load(fichier)
-
-    return donnees
-
-def recuperer_consommations_initiales(donnees):
-    consommations_initiales = {}
-
-    for region_id, region in donnees["initial_state_t_minus_1"]["regions"].items():
-        consommations_initiales[region_id] = region["consumption_mw"]
-
-    return consommations_initiales
-
-def calculer_evolution_consommation(consommation_precedente, consommation_actuelle):
-    return consommation_actuelle - consommation_precedente
-
-def calculer_evolutions_regions(consommations_precedentes,consommations_actuelles):
-    evolutions = {}
-
-    for region_id in consommations_actuelles:
-        evolution = calculer_evolution_consommation(consommations_precedentes[region_id], consommations_actuelles[region_id])
-
-        evolutions[region_id] = evolution
-
-    return evolutions
-
-def recuperer_consommations_par_temps(donnees, index):
-    consommations = {}
-
-    for region in donnees["regions"]:
-        consommations[region["id"]] = region["consumption_mw"][index]
-    return consommations
-
-
-def parcourir_journee(donnees):
-    resultats = []
-
-    for index in range(len(donnees["timestamps"])):
-        heure = donnees["timestamps"][index]
-
-        consommations = recuperer_consommations_par_temps( donnees, index)
-
-        resultats.append({
-            "heure": heure,
-            "consommations": consommations,
-        })
-    return resultats
 
 @router.get("/test-journee")
 def test_journee():
