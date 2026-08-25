@@ -8,12 +8,33 @@ from .calcul import calcul_score,repartir_demande,classer_candidats,du_terroire,
 
 router = APIRouter(prefix="/dijkstra")
 
+
 def charger_journee_reference():
-    with open(
-        "data/energia-journee-reference-consommation.json","r", encoding="utf-8") as fichier:
+    with open("data/energia-journee-reference-avec-t-moins-1.json", "r", encoding="utf-8") as fichier:
         donnees = json.load(fichier)
+
     return donnees
 
+def recuperer_consommations_initiales(donnees):
+    consommations_initiales = {}
+
+    for region_id, region in donnees["initial_state_t_minus_1"]["regions"].items():
+        consommations_initiales[region_id] = region["consumption_mw"]
+
+    return consommations_initiales
+
+def calculer_evolution_consommation(consommation_precedente, consommation_actuelle):
+    return consommation_actuelle - consommation_precedente
+
+def calculer_evolutions_regions(consommations_precedentes,consommations_actuelles):
+    evolutions = {}
+
+    for region_id in consommations_actuelles:
+        evolution = calculer_evolution_consommation(consommations_precedentes[region_id], consommations_actuelles[region_id])
+
+        evolutions[region_id] = evolution
+
+    return evolutions
 
 def recuperer_consommations_par_temps(donnees, index):
     consommations = {}
@@ -36,6 +57,23 @@ def parcourir_journee(donnees):
             "consommations": consommations,
         })
     return resultats
+
+@router.get("/test-journee")
+def test_journee():
+    donnees = charger_journee_reference()
+
+    consommations_precedentes = recuperer_consommations_initiales(donnees)
+
+    consommations_actuelles = recuperer_consommations_par_temps(donnees, 0)
+
+    evolutions = calculer_evolutions_regions(consommations_precedentes, consommations_actuelles)
+
+    return {
+        "heure": donnees["timestamps"][0],
+        "consommations_precedentes": consommations_precedentes,
+        "consommations_actuelles": consommations_actuelles,
+        "evolutions": evolutions
+    }
 
 @router.get("/consommation-journee")
 def consommation_journee():
