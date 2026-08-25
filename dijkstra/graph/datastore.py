@@ -7,6 +7,7 @@ from .parsing import parse_centrale, parse_liaison, parse_region
 
 DATA_PATH = Path(__file__).parent.parent / "data" / "data.json"
 
+
 # Conteneur central (centrales, régions, liaisons et graphe associé)
 
 class DataStore:
@@ -16,7 +17,7 @@ class DataStore:
         self.centrales = {}
         self.regions = {}
         self.liaisons = []
-        self.timestamps = []  
+        self.timestamps = []
         self.graph = Graph()
 
     def load(self, path=DATA_PATH):
@@ -28,6 +29,9 @@ class DataStore:
 
         self.metadata = raw.get("metadata", {})
         self.simulation_parameters = raw.get("simulation_parameters", {})
+        
+        # Pour le cas d'un fichier avec colonne timestamps
+        self.timestamps = raw.get("timestamps", [])
 
         for raw_plant in raw.get("plants", []):
             centrale = parse_centrale(raw_plant)
