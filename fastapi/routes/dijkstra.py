@@ -147,6 +147,7 @@ def run_simulation(region: str, augmentation_mw: float):
         raise HTTPException(status_code=404, detail=f"Région '{region}' introuvable")
 
     candidats = []
+    note = None
 
     # --- Centrales locales (distance = 0, pertes = 0) ---
     central_locales = []
