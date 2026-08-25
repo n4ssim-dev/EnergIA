@@ -12,89 +12,23 @@ from .calcul import (
     trouver_liaison,
     rechercher_centrales_distantes,
     calcul_distance_region,
+    charger_journee_reference,
+    recuperer_consommations_initiales,
+    calculer_evolution_consommation,
+    calculer_evolutions_regions,
+    recuperer_consommations_par_temps,
+    parcourir_journee,
+    parcourir_journee_solaire,
+    parcourir_journee_eolien,
+    production_hors_nucleaire,
+    recuperer_donnees_solaires,
+    recuperer_donnees_eolien,
+    charger_journee_reference_hors_nucleaire
 )
 from pathlib import Path
 
 router = APIRouter(prefix="/dijkstra")
 
-
-def charger_journee_reference():
-    with open("data/energia-journee-reference-avec-t-moins-1.json", "r", encoding="utf-8") as fichier:
-        donnees = json.load(fichier)
-
-    return donnees
-
-def recuperer_consommations_initiales(donnees):
-    consommations_initiales = {}
-
-    for region_id, region in donnees["initial_state_t_minus_1"]["regions"].items():
-        consommations_initiales[region_id] = region["consumption_mw"]
-
-    return consommations_initiales
-
-def calculer_evolution_consommation(consommation_precedente, consommation_actuelle):
-    return consommation_actuelle - consommation_precedente
-
-def calculer_evolutions_regions(consommations_precedentes,consommations_actuelles):
-    evolutions = {}
-
-    for region_id in consommations_actuelles:
-        evolution = calculer_evolution_consommation(consommations_precedentes[region_id], consommations_actuelles[region_id])
-
-        evolutions[region_id] = evolution
-
-    return evolutions
-
-def recuperer_consommations_par_temps(donnees, index):
-    consommations = {}
-
-    for region in donnees["regions"]:
-        consommations[region["id"]] = region["consumption_mw"][index]
-    return consommations
-
-
-def parcourir_journee(donnees):
-    resultats = []
-
-    for index in range(len(donnees["timestamps"])):
-        heure = donnees["timestamps"][index]
-
-        consommations = recuperer_consommations_par_temps( donnees, index)
-
-        resultats.append({
-            "heure": heure,
-            "consommations": consommations,
-        })
-    return resultats
-
-@router.get("/test-journee")
-def test_journee():
-    donnees = charger_journee_reference()
-
-    consommations_precedentes = recuperer_consommations_initiales(donnees)
-
-    consommations_actuelles = recuperer_consommations_par_temps(donnees, 0)
-
-    evolutions = calculer_evolutions_regions(consommations_precedentes, consommations_actuelles)
-
-    return {
-        "heure": donnees["timestamps"][0],
-        "consommations_precedentes": consommations_precedentes,
-        "consommations_actuelles": consommations_actuelles,
-        "evolutions": evolutions
-    }
-
-@router.get("/consommation-journee")
-def consommation_journee():
-    donnees = charger_journee_reference()
-
-    resultats = parcourir_journee(donnees)
-
-    return {
-        "nombre_etape": len(resultats),
-        "journee": resultats
-    }
-    
 
 @router.get("/load-datastore")
 def load_datastore_route():
@@ -331,4 +265,25 @@ def calculer_regions():
     return {
         "nombre_etapes": len(resultats),
         "journee": resultats
+    }
+
+# ---------------------------------------------------------------------------
+# Exposition de la production énergies hors nucléaire par /4 d'heure et par région
+# ---------------------------------------------------------------------------
+@router.get("/production-non-pilotable")
+def get_production_non_pilotable():
+    donnees = charger_journee_reference_hors_nucleaire()
+
+    production_solaire = recuperer_donnees_solaires(donnees)
+    production_eolien = recuperer_donnees_eolien(donnees)
+
+    total_hors_nucleaire = production_hors_nucleaire(
+        production_solaire,
+        production_eolien
+    )
+
+    return {
+        "solaire": production_solaire,
+        "eolien": production_eolien,
+        "solaire_plus_eolien": total_hors_nucleaire
     }
