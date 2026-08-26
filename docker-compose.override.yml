@@ -4,13 +4,13 @@ services:
     container_name: energia-api
     build:
       context: .
-      dockerfile: ./api/Dockerfile
+      dockerfile: ./fastapi/Dockerfile
     ports:
       - "8000:8000"
     env_file:
-      - ./api/.env
+      - ./fastapi/.env
     volumes:
-      - ./api:/app
+      - ./fastapi:/app
 
   gateway:
     container_name: energia-gateway
