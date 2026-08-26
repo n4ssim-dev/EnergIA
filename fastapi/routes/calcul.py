@@ -139,7 +139,14 @@ def repartir_demande(
             candidat["soft_upper_bound_mw"],
             current_output_mw
         )
-
+        print(
+        "CENTRALE",
+        plant_id,
+        "current =", current_output_mw,
+        "max =", candidat["soft_upper_bound_mw"],
+        "disponible =", available_power,
+        "demande restante =", demand_left
+        )
         if available_power <= 0:
             continue
 
@@ -153,6 +160,13 @@ def repartir_demande(
             "allocated_mw": allocation_candidat
         })
 
+        print(
+        "ALLOCATION",
+        plant_id,
+        "+", allocation_candidat,
+        "→", current_output_mw + allocation_candidat
+        )
+        
         # Mise à jour de l'état global
         etat_centrales[plant_id] = (
             current_output_mw + allocation_candidat
