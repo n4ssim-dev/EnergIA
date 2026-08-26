@@ -27,7 +27,7 @@ def calcul_vitesse_montee(centrale) :
 # ---------------------------------------------------------------------------
 
 def calcul_vitesse_descente(centrale) :
-    rampDown = calcul_vitesse_montee(centrale)
+    rampDown = centrale.max_ramp_down_mw_per_15_min
     return(rampDown)
 
 # ---------------------------------------------------------------------------
