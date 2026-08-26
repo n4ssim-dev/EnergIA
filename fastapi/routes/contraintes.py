@@ -1,3 +1,11 @@
+import json
+
+def charger_param_temps_nucleaire():
+    with open("data/energia_parametres_temporels_nucleaire.json", "r", encoding="utf-8") as fichier:
+        donnees_nucleaire = json.load(fichier)
+
+    return donnees_nucleaire
+
 # ---------------------------------------------------------------------------
 # 1. Puissance maximale
 # ---------------------------------------------------------------------------
@@ -29,6 +37,7 @@ def calcul_vitesse_montee(centrale) :
 def calcul_vitesse_descente(centrale) :
     rampDown = calcul_vitesse_montee(centrale)
     return(rampDown)
+
 
 # ---------------------------------------------------------------------------
 # 5. Calcule contrainte en fonction de la demande
