@@ -323,7 +323,7 @@ def calculer_evolutions_regions(consommations_precedentes,consommations_actuelle
     return evolutions
 
 # ---------------------------------------------------------------------------
-# 18. Calcul du besoin en nucléaire par région
+# 19. Calcul du besoin en nucléaire par région
 # ---------------------------------------------------------------------------
 def calcul_production_restante_a_fournir(parcourir_journee,production_hors_nucleaire):
     total_production_restante = {}
@@ -340,4 +340,81 @@ def calcul_production_restante_a_fournir(parcourir_journee,production_hors_nucle
             total_production_restante[region_id].append(total)
 
     return total_production_restante
-   
+
+# ---------------------------------------------------------------------------
+# 20. Calcul des besoins résiduels après monopolisation du nucléaire
+# ---------------------------------------------------------------------------
+def repartir_demande(
+    demande_mw,
+    candidats_tries,
+    etat_centrales
+):
+    allocation = []
+    demand_left = demande_mw
+
+    for candidat in candidats_tries:
+
+        if demand_left <= 0:
+            break
+
+        plant_id = candidat["plant_id"]
+
+        # Toujours prendre l'état global actuel
+        current_output_mw = etat_centrales.get(
+            plant_id,
+            candidat["current_output_mw"]
+        )
+
+        available_power = calcul_puissanceDispo(
+            candidat["soft_upper_bound_mw"],
+            current_output_mw
+        )
+
+        if available_power <= 0:
+            continue
+
+        allocation_candidat = min(
+            demand_left,
+            available_power
+        )
+
+        allocation.append({
+            "plant_id": plant_id,
+            "allocated_mw": allocation_candidat
+        })
+
+        # Mise à jour de l'état global
+        etat_centrales[plant_id] = (
+            current_output_mw + allocation_candidat
+        )
+
+        # Mise à jour du candidat
+        candidat["current_output_mw"] = etat_centrales[plant_id]
+
+        demand_left -= allocation_candidat
+
+    return {
+        "allocation": allocation,
+        "unsatisfied_mw": demand_left
+    }
+
+
+
+
+
+
+# production_nucleaire_reelle_par_region
+# ---------------------------------------------------------------------------
+# 20. Calcul des besoins résiduels après monopolisation du nucléaire
+# ---------------------------------------------------------------------------
+
+# def calul_besoins_residuels(calcul_production_restante_a_fournir, )
+#     besoins_residuels = {}
+
+#     for region_id in calcul_production_restante_a_fournir :
+#         besoins_residuels[region_id] = []
+
+#         for index in range(96):
+#             total = (calcul_production_restante_a_fournir[index][region_id] - 
+
+#             )
