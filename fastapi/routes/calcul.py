@@ -1,6 +1,6 @@
 from haversine import haversine
 import json
-
+from .contraintes import (puissance_reelle)
 
 # ---------------------------------------------------------------------------
 # 1. Puissance disponible d'une centrale
@@ -195,6 +195,13 @@ def charger_journee_reference():
 
     return donnees
 
+def charger_param_temps_nucleaire():
+    with open("data/energia_parametres_temporels_nucleaire.json", "r", encoding="utf-8") as fichier:
+        donnees_nucleaire = json.load(fichier)
+
+    return donnees_nucleaire
+
+
 # ---------------------------------------------------------------------------
 # 12. Récupération des données du solaire en /4 d'heure
 # ---------------------------------------------------------------------------
@@ -342,79 +349,29 @@ def calcul_production_restante_a_fournir(parcourir_journee,production_hors_nucle
     return total_production_restante
 
 # ---------------------------------------------------------------------------
-# 20. Calcul des besoins résiduels après monopolisation du nucléaire
+# 20. Calcul de la puissance nucléaire initiale
 # ---------------------------------------------------------------------------
-def repartir_demande(
-    demande_mw,
-    candidats_tries,
-    etat_centrales
-):
-    allocation = []
-    demand_left = demande_mw
+def calcul_puissance_precedente(donnees_nucleaires):
+    puissance_precedente = {}
 
-    for candidat in candidats_tries:
-
-        if demand_left <= 0:
-            break
-
-        plant_id = candidat["plant_id"]
-
-        # Toujours prendre l'état global actuel
-        current_output_mw = etat_centrales.get(
-            plant_id,
-            candidat["current_output_mw"]
+    for centrale in donnees_nucleaires["plants"]:
+        puissance_precedente[centrale["plant_id"]] = (
+            centrale["initial_output_mw_at_23_45_previous_day"]
         )
 
-        available_power = calcul_puissanceDispo(
-            candidat["soft_upper_bound_mw"],
-            current_output_mw
-        )
+    return puissance_precedente
 
-        if available_power <= 0:
-            continue
-
-        allocation_candidat = min(
-            demand_left,
-            available_power
-        )
-
-        allocation.append({
-            "plant_id": plant_id,
-            "allocated_mw": allocation_candidat
-        })
-
-        # Mise à jour de l'état global
-        etat_centrales[plant_id] = (
-            current_output_mw + allocation_candidat
-        )
-
-        # Mise à jour du candidat
-        candidat["current_output_mw"] = etat_centrales[plant_id]
-
-        demand_left -= allocation_candidat
-
-    return {
-        "allocation": allocation,
-        "unsatisfied_mw": demand_left
-    }
-
-
-
-
-
-
-# production_nucleaire_reelle_par_region
 # ---------------------------------------------------------------------------
-# 20. Calcul des besoins résiduels après monopolisation du nucléaire
+# 21. Calcul de la production nucléaire réelle
 # ---------------------------------------------------------------------------
+def calcul_production_reelle_nucleaire(puissance_reelle, puissance_precedente):
+    production_nucleaire_reelle_fournie = (puissance_reelle - puissance_precedente)
 
-# def calul_besoins_residuels(calcul_production_restante_a_fournir, )
-#     besoins_residuels = {}
+    return production_nucleaire_reelle_fournie
 
-#     for region_id in calcul_production_restante_a_fournir :
-#         besoins_residuels[region_id] = []
+# ---------------------------------------------------------------------------
+# 22. Calcul des besoins résiduels après monopolisation du nucléaire
+# ---------------------------------------------------------------------------
+def calcul_residuel_final(production_restante_a_fournir, production_nucleaire_reelle):
 
-#         for index in range(96):
-#             total = (calcul_production_restante_a_fournir[index][region_id] - 
-
-#             )
+    return (production_restante_a_fournir - production_nucleaire_reelle)
