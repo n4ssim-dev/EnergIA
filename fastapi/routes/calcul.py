@@ -332,7 +332,7 @@ def calculer_evolutions_regions(consommations_precedentes,consommations_actuelle
 # ---------------------------------------------------------------------------
 # 19. Calcul du besoin en nucléaire par région
 # ---------------------------------------------------------------------------
-def calcul_production_restante_a_fournir(parcourir_journee,production_hors_nucleaire):
+def calcul_besoins_residuels(parcourir_journee,production_hors_nucleaire):
     total_production_restante = {}
 
     for region_id in production_hors_nucleaire:
@@ -362,6 +362,17 @@ def calcul_puissance_precedente(donnees_nucleaires):
     return puissance_precedente
 
 # ---------------------------------------------------------------------------
+# 20. Récupération de l'historique de la production nucléaire
+# ---------------------------------------------------------------------------
+def initialiser_historique_production(donnees_nucleaires):
+    historique = {}
+
+    for centrale in donnees_nucleaires["plants"]:
+        historique[centrale["plant_id"]] = []
+
+    return historique
+
+# ---------------------------------------------------------------------------
 # 21. Calcul de la production nucléaire réelle
 # ---------------------------------------------------------------------------
 def calcul_production_reelle_nucleaire(puissance_reelle, puissance_precedente):
@@ -370,8 +381,29 @@ def calcul_production_reelle_nucleaire(puissance_reelle, puissance_precedente):
     return production_nucleaire_reelle_fournie
 
 # ---------------------------------------------------------------------------
-# 22. Calcul des besoins résiduels après monopolisation du nucléaire
+# 22. Calcul un pas pour chacune des centrales
 # ---------------------------------------------------------------------------
-def calcul_residuel_final(production_restante_a_fournir, production_nucleaire_reelle):
+def calculer_un_pas_temps(
+    donnees_nucleaires,
+    puissance_precedente,
+    puissances_souhaitees,
+    historique
+):
+    for centrale in donnees_nucleaires["plants"]:
+        plant_id = centrale["plant_id"]
 
-    return (production_restante_a_fournir - production_nucleaire_reelle)
+        puissance_souhaitee = puissances_souhaitees[plant_id]
+
+        nouvelle_puissance = puissance_reelle(
+            puissance_precedente[plant_id],
+            puissance_souhaitee,
+            centrale
+        )
+
+        historique[plant_id].append(nouvelle_puissance)
+
+        puissance_precedente[plant_id] = nouvelle_puissance
+
+    return puissance_precedente, historique
+
+

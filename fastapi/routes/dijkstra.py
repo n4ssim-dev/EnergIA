@@ -22,8 +22,7 @@ from .calcul import (
     recuperer_donnees_solaires,
     recuperer_donnees_eolien,
     charger_journee_reference_hors_nucleaire,
-    calcul_production_restante_a_fournir,
-    calcul_residuel_final
+    calcul_besoins_residuels
 )
 
 router = APIRouter(prefix="/dijkstra")
@@ -349,42 +348,34 @@ def calculer_regions():
     }
 
 # ---------------------------------------------------------------------------
-# Exposition de la production énergies hors nucléaire par /4 d'heure et par région
+# Exposition des besoins résiduels par région et par /4 d'heure
 # ---------------------------------------------------------------------------
-@router.get("/production-non-pilotable")
-def get_production_non_pilotable():
-    donnees = charger_journee_reference_hors_nucleaire()
+@router.get("/besoins-residuels")
+def get_besoins_residuels():
 
-    production_solaire = recuperer_donnees_solaires(donnees)
-    production_eolien = recuperer_donnees_eolien(donnees)
+    donnees_consommation = charger_journee_reference()
+    donnees_non_pilotables = charger_journee_reference_hors_nucleaire()
 
-    total_hors_nucleaire = production_hors_nucleaire(
+    journee = parcourir_journee(donnees_consommation)
+
+    production_solaire = recuperer_donnees_solaires(
+        donnees_non_pilotables
+    )
+
+    production_eolien = recuperer_donnees_eolien(
+        donnees_non_pilotables
+    )
+
+    production_non_pilotable = production_hors_nucleaire(
         production_solaire,
         production_eolien
     )
 
-    return {
-        "solaire": production_solaire,
-        "eolien": production_eolien,
-        "solaire_plus_eolien": total_hors_nucleaire
-    }
-
-# ---------------------------------------------------------------------------
-# Exposition du résiduel final
-# ---------------------------------------------------------------------------
-@router.get("/test-residuel-final")
-def test_residuel_final():
-
-    production_restante_a_fournir = 2800
-    production_nucleaire_reelle = 2650
-
-    residuel = calcul_residuel_final(
-        production_restante_a_fournir,
-        production_nucleaire_reelle
+    besoins_residuels = calcul_besoins_residuels(
+        journee,
+        production_non_pilotable
     )
 
     return {
-        "production_restante_a_fournir_mw": production_restante_a_fournir,
-        "production_nucleaire_reelle_mw": production_nucleaire_reelle,
-        "residuel_final_mw": residuel
+        "besoins_residuels": besoins_residuels
     }
