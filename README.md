@@ -269,26 +269,257 @@ flamanville -> chinon -> saint_laurent -> belleville -> bugey -> tricastin (949.
   shortest-path). Ça vérifie que ça tourne, pas que c'est juste dans
   tous les cas.
 
-### Nouvelle étape :
+# EnergIA – Moteur de simulation temporelle
 
-```bash
-Charger le JSON de consommation
-        ↓
-Charger l’état initial du parc nucléaire
-        ↓
-Pour chaque index de 0 à 95
-        ↓
-Récupérer le timestamp correspondant
-        ↓
-Récupérer la consommation de chaque région à cet index
-        ↓
-Donner ces besoins au moteur prescriptif
-        ↓
-Le moteur calcule la nouvelle production des centrales
-        ↓
-Respect des min/max et des rampes
-        ↓
-Conserver le nouvel état des centrales
-        ↓
-Utiliser cet état au tour suivant
+## Présentation
+
+EnergIA est un moteur de simulation permettant de représenter l’évolution de la production électrique sur une journée de référence.
+
+La simulation fonctionne par pas de temps de **15 minutes**, soit **96 états successifs sur une journée complète**.
+
+Le moteur prend notamment en compte :
+
+- la consommation électrique régionale ;
+- la production solaire ;
+- la production éolienne ;
+- la production nucléaire ;
+- les contraintes de montée et de descente en puissance des centrales ;
+- la puissance minimale et maximale des centrales ;
+- la disponibilité des centrales ;
+- la réserve nucléaire minimale ;
+- les éventuelles perturbations de consommation.
+
+L’objectif est de déterminer, pour chaque région et chaque quart d’heure, si la production disponible permet de répondre au besoin électrique.
+
+---
+
+# Lancer une simulation
+
+## Prérequis
+
+Le projet nécessite notamment :
+
+- Python ;
+- FastAPI ;
+- les dépendances présentes dans le projet ;
+- les fichiers JSON nécessaires à la simulation.
+
+Activer l’environnement virtuel :
+
+```powershell
+.\.venv\Scripts\Activate.ps1
 ```
+Se placer dans le dossier fastapi :
+```
+cd fastapi
+```
+Lancer l'API
+```
+fastapi run .\main.py
+```
+Ouvrir le Swagger avec :
+```
+http://localhost:8000/docs
+```
+## Format des données temporelles
+
+La simulation utilise une journée découpée en **96 pas de 15 minutes**.
+
+Exemple de timestamps :
+
+```
+{
+  "timestamps": [
+    "00:00",
+    "00:15",
+    "00:30",
+    "00:45"
+  ]
+}
+```
+Chaque région possède une liste de 96 valeurs correspondant aux 96 quarts d’heure de la journée.
+
+Exemple pour la consommation :
+```
+{
+  "id": "occitanie",
+  "consumption_mw": [
+    2894,
+    2870,
+    2850
+  ]
+}
+```
+Le même principe est utilisé pour la production **solaire** et **éolienne** :
+```
+{
+  "id": "occitanie",
+  "production_mw": {
+    "solar": [
+      0,
+      0,
+      0
+    ],
+    "wind": [
+      926,
+      910,
+      895
+    ]
+  }
+}
+```
+Les valeurs situées au même index correspondent au même pas de temps.
+
+Par exemple :
+```
+index 0  → 00:00
+index 1  → 00:15
+index 2  → 00:30
+...
+index 95 → 23:45
+```
+## Calcul des états successifs
+
+La simulation est dite stateful : l’état calculé à un instant donné est utilisé comme point de départ pour le pas de temps suivant.
+
+Pour le premier pas de temps, la puissance précédente d’une centrale correspond à sa puissance à 23:45 la veille.
+
+Exemple :
+```
+{
+  "plant_id": "belleville",
+  "initial_output_mw_at_23_45_previous_day": 1493
+}
+```
+Ensuite :
+```
+- 23:45 veille
+    
+-> calcul de 00:00
+    
+-> puissance réelle à 00:00
+    
+-> utilisée comme puissance précédente à 00:15
+    
+-> puissance réelle à 00:15
+    
+-> utilisée à 00:30
+    
+...
+```
+Ainsi, chaque calcul dépend directement de l’état précédent.
+
+## Règles de montée et de descente en puissance
+
+Une centrale nucléaire ne peut pas modifier instantanément sa production.
+
+Chaque centrale dispose donc :
+
+- d’une puissance minimale ;
+- d’une puissance maximale ;
+- d’une vitesse maximale de montée sur 15 minutes ;
+- d’une vitesse maximale de descente sur 15 minutes.
+
+Exemple :
+```
+{
+  "plant_id": "belleville",
+  "minimum_operating_power_mw": 520,
+  "maximum_power_mw": 2620,
+  "max_ramp_up_mw_per_15_min": 240,
+  "max_ramp_down_mw_per_15_min": 264
+}
+```
+Si une centrale produit 1500 MW et que la puissance souhaitée est de 1900 MW, avec une rampe maximale de montée de 240 MW :
+
+- puissance précédente = 1500 MW
+- puissance souhaitée = 1900 MW
+
+- augmentation demandée = 400 MW
+- augmentation autorisée = 240 MW
+
+- puissance réellement atteignable = 1740 MW
+
+Le même principe est appliqué lors d’une diminution de puissance.
+
+La puissance finale doit également rester comprise entre les limites minimale et maximale de la centrale.
+
+## Production non pilotable
+
+La production solaire et éolienne est considérée comme non pilotable.
+
+Pour chaque région et chaque quart d’heure :
+```
+production hors nucléaire = production solaire + production éolienne
+```
+Exemple :
+```
+solaire = 400 MW
+éolien = 600 MW
+
+production hors nucléaire = 1000 MW
+```
+## Calcul de la demande résiduelle
+
+Dans le moteur, un premier besoin restant est calculé après prise en compte des productions solaire et éolienne.
+
+La formule utilisée est :
+```
+besoin résiduel = consommation - production solaire - production éolienne
+
+ou :
+
+besoin résiduel = consommation - production hors nucléaire
+```
+Le calcul est effectué pour chaque région et chacun des 96 pas de temps.
+
+Exemple :
+```
+consommation = 3000 MW
+solaire = 400 MW
+éolien = 600 MW
+
+besoin résiduel = 3000 - 400 - 600
+                = 2000 MW
+```
+Ce besoin doit ensuite être couvert par le nucléaire.
+
+Après prise en compte de la production nucléaire réellement disponible, un déficit final peut être calculé :
+```
+déficit final = besoin résiduel - production nucléaire réellement fournie
+```
+Si le résultat est supérieur à 0, cette puissance n’a pas pu être couverte par le moteur et doit être considérée comme un besoin complémentaire d’approvisionnement.
+
+## Réserve nucléaire minimale
+
+**A COMPLETER**
+
+## Perturbation de consommation
+**A COMPLETER**
+
+## Principales limites connues
+**A COMPLETER**
+
+## Résumé du fonctionnement
+```
+Consommation régionale
+        ↓
+Production solaire + éolienne
+        ↓
+Calcul du besoin résiduel
+        ↓
+Sélection des centrales nucléaires
+        ↓
+Application des contraintes
+        ↓
+Puissance nucléaire réellement disponible
+        ↓
+Mise à jour de l'état des centrales
+        ↓
+Passage au quart d'heure suivant
+        ↓
+Calcul du déficit éventuel
+        ↓
+Contrôle de la réserve nucléaire
+```
+La simulation est répétée sur les 96 quarts d’heure de la journée.
