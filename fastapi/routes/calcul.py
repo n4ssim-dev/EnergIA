@@ -48,10 +48,10 @@ def du_terroire(plant_id, local_plant_ids):
 #    (formule fournie dans simulation_parameters du JSON)
 # ---------------------------------------------------------------------------
 def calcul_score(geodesic_distance_km, loss_percent, soft_upper_bound_mw,
-                  technical_penalty, plant_id, local_plant_ids, initial_output_mw):
+                  technical_penalty, plant_id, local_plant_ids,current_output_mw ): #initial_output_mw
     score_distance = geodesic_distance_km * 1
     score_loss = loss_percent * 45
-    load = calcul_taux_saturation(initial_output_mw, soft_upper_bound_mw)
+    load = calcul_taux_saturation(current_output_mw, soft_upper_bound_mw) # initial_output_mw
     score_saturation = (load ** 4) * 900
     score_technical = technical_penalty * 200
     if du_terroire(plant_id, local_plant_ids):
@@ -114,28 +114,52 @@ def rechercher_centrales_distantes(source_id, cibles_ids, store):
 # ---------------------------------------------------------------------------
 # 9. Répartition de la demande entre les candidates triés
 # ---------------------------------------------------------------------------
-def repartir_demande(demande_mw, candidats_tries):
+def repartir_demande(
+    demande_mw,
+    candidats_tries,
+    etat_centrales
+):
     allocation = []
     demand_left = demande_mw
 
-    for candidats in candidats_tries:
+    for candidat in candidats_tries:
+
         if demand_left <= 0:
             break
 
+        plant_id = candidat["plant_id"]
+
+        # Toujours prendre l'état global actuel
+        current_output_mw = etat_centrales.get(
+            plant_id,
+            candidat["current_output_mw"]
+        )
+
         available_power = calcul_puissanceDispo(
-            candidats["soft_upper_bound_mw"],
-            candidats["initial_output_mw"]
+            candidat["soft_upper_bound_mw"],
+            current_output_mw
         )
 
         if available_power <= 0:
             continue
 
-        allocation_candidat = min(demand_left, available_power)
+        allocation_candidat = min(
+            demand_left,
+            available_power
+        )
 
         allocation.append({
-            "plant_id": candidats["plant_id"],
+            "plant_id": plant_id,
             "allocated_mw": allocation_candidat
         })
+
+        # Mise à jour de l'état global
+        etat_centrales[plant_id] = (
+            current_output_mw + allocation_candidat
+        )
+
+        # Mise à jour du candidat
+        candidat["current_output_mw"] = etat_centrales[plant_id]
 
         demand_left -= allocation_candidat
 
@@ -143,7 +167,6 @@ def repartir_demande(demande_mw, candidats_tries):
         "allocation": allocation,
         "unsatisfied_mw": demand_left
     }
-
 # ---------------------------------------------------------------------------
 # 10. Calcule longitude et latitude
 # ---------------------------------------------------------------------------
@@ -298,3 +321,23 @@ def calculer_evolutions_regions(consommations_precedentes,consommations_actuelle
         evolutions[region_id] = evolution
 
     return evolutions
+
+# ---------------------------------------------------------------------------
+# 18. Calcul du besoin en nucléaire par région
+# ---------------------------------------------------------------------------
+def calcul_production_restante_a_fournir(parcourir_journee,production_hors_nucleaire):
+    total_production_restante = {}
+
+    for region_id in production_hors_nucleaire:
+        total_production_restante[region_id] = []
+
+        for index in range(96):
+            total = (
+                parcourir_journee[index]["consommations"][region_id]
+                - production_hors_nucleaire[region_id][index]
+            )
+
+            total_production_restante[region_id].append(total)
+
+    return total_production_restante
+   
