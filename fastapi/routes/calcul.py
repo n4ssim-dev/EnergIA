@@ -1,6 +1,6 @@
 from haversine import haversine
 import json
-
+from .contraintes import (puissance_reelle)
 
 # ---------------------------------------------------------------------------
 # 1. Puissance disponible d'une centrale
@@ -195,6 +195,13 @@ def charger_journee_reference():
 
     return donnees
 
+def charger_param_temps_nucleaire():
+    with open("data/energia_parametres_temporels_nucleaire.json", "r", encoding="utf-8") as fichier:
+        donnees_nucleaire = json.load(fichier)
+
+    return donnees_nucleaire
+
+
 # ---------------------------------------------------------------------------
 # 12. Récupération des données du solaire en /4 d'heure
 # ---------------------------------------------------------------------------
@@ -323,7 +330,7 @@ def calculer_evolutions_regions(consommations_precedentes,consommations_actuelle
     return evolutions
 
 # ---------------------------------------------------------------------------
-# 18. Calcul du besoin en nucléaire par région
+# 19. Calcul du besoin en nucléaire par région
 # ---------------------------------------------------------------------------
 def calcul_production_restante_a_fournir(parcourir_journee,production_hors_nucleaire):
     total_production_restante = {}
@@ -340,4 +347,31 @@ def calcul_production_restante_a_fournir(parcourir_journee,production_hors_nucle
             total_production_restante[region_id].append(total)
 
     return total_production_restante
-   
+
+# ---------------------------------------------------------------------------
+# 20. Calcul de la puissance nucléaire initiale
+# ---------------------------------------------------------------------------
+def calcul_puissance_precedente(donnees_nucleaires):
+    puissance_precedente = {}
+
+    for centrale in donnees_nucleaires["plants"]:
+        puissance_precedente[centrale["plant_id"]] = (
+            centrale["initial_output_mw_at_23_45_previous_day"]
+        )
+
+    return puissance_precedente
+
+# ---------------------------------------------------------------------------
+# 21. Calcul de la production nucléaire réelle
+# ---------------------------------------------------------------------------
+def calcul_production_reelle_nucleaire(puissance_reelle, puissance_precedente):
+    production_nucleaire_reelle_fournie = (puissance_reelle - puissance_precedente)
+
+    return production_nucleaire_reelle_fournie
+
+# ---------------------------------------------------------------------------
+# 22. Calcul des besoins résiduels après monopolisation du nucléaire
+# ---------------------------------------------------------------------------
+def calcul_residuel_final(production_restante_a_fournir, production_nucleaire_reelle):
+
+    return (production_restante_a_fournir - production_nucleaire_reelle)
