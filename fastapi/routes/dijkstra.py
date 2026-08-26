@@ -23,6 +23,7 @@ from .calcul import (
     recuperer_donnees_eolien,
     charger_journee_reference_hors_nucleaire,
     calcul_production_restante_a_fournir,
+    calcul_residuel_final
 )
 
 router = APIRouter(prefix="/dijkstra")
@@ -366,4 +367,24 @@ def get_production_non_pilotable():
         "solaire": production_solaire,
         "eolien": production_eolien,
         "solaire_plus_eolien": total_hors_nucleaire
+    }
+
+# ---------------------------------------------------------------------------
+# Exposition du résiduel final
+# ---------------------------------------------------------------------------
+@router.get("/test-residuel-final")
+def test_residuel_final():
+
+    production_restante_a_fournir = 2800
+    production_nucleaire_reelle = 2650
+
+    residuel = calcul_residuel_final(
+        production_restante_a_fournir,
+        production_nucleaire_reelle
+    )
+
+    return {
+        "production_restante_a_fournir_mw": production_restante_a_fournir,
+        "production_nucleaire_reelle_mw": production_nucleaire_reelle,
+        "residuel_final_mw": residuel
     }
