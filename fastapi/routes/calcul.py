@@ -413,7 +413,7 @@ def calculer_un_pas_temps(
     return puissance_precedente, historique
 
 # ---------------------------------------------------------------------------
-# 22. Calcul un pas pour chacune des centrales
+# 22. Calcul de l'énergie disponible dans les centrtales après contraintes
 # ---------------------------------------------------------------------------
 def calcul_marge_reelle_disponible(
     puissance_precedente,
