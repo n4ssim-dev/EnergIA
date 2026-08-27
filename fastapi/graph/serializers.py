@@ -30,6 +30,7 @@ def serialize_centrale(centrale):
         "soft_upper_bound_ratio": centrale.soft_upper_bound_ratio,
         "initial_dispatchable_margin_mw": centrale.initial_dispatchable_margin_mw,
         "max_ramp_up_mw_per_15_min": centrale.max_ramp_up_mw_per_15_min,
+        "max_ramp_down_mw_per_15_min":centrale.max_ramp_down_mw_per_15_min,
         "technical_penalty": centrale.technical_penalty,
         "available_capacity_mw": centrale.available_capacity_mw(),
     }
