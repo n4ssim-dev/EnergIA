@@ -8,7 +8,7 @@ from .auth import check_password
 
 DATA_DIR = Path(__file__).parent.parent / "data"
 DB_PATH = DATA_DIR / "energia.db"
-SCHEMA_PATH = DATA_DIR / "mcd2.sql"
+SCHEMA_PATH = DATA_DIR / "mcd_analytique.sql"
 
 FILIERES = {
     "solar": "Solaire",
@@ -18,19 +18,18 @@ FILIERES = {
 # Ordre sans contrainte particulière : PRAGMA foreign_keys est désactivé le
 # temps du drop, pour ne pas avoir à respecter l'ordre des FK.
 TABLES = [
-    "evenement_consommation",
+    "fait_evenement_consommation",
     "scenario_phase3",
     "scenario_override",
     "scenario",
-    "accessible_via2",
+    "accessible_via",
     "reacteur",
     "liaison",
     "centrale",
-    "consommation_reference",
-    "production_non_pilotable",
+    "fait_consommation",
+    "fait_production_non_pilotable",
     "capacitee_instalee_non_pilotable",
-    "etat_initial_regional",
-    "pas_de_temps",
+    "dim_temps",
     "filiere",
     "region",
 ]
@@ -55,6 +54,35 @@ def _load(filename):
         return json.load(f)
 
 
+def _step_index_from_hhmm(horodatage):
+    heure, minute = horodatage.split(":")
+    return int(heure) * 4 + int(minute) // 15
+
+
+def _id_temps(jour_relatif, horodatage):
+    return f"{jour_relatif}#{horodatage}"
+
+
+def _ensure_dim_temps_point(conn, jour_relatif, horodatage):
+    conn.execute(
+        """
+        INSERT OR IGNORE INTO dim_temps (id_temps, step_index, jour_relatif, heure)
+        VALUES (?, ?, ?, ?)
+        """,
+        (
+            _id_temps(jour_relatif, horodatage),
+            _step_index_from_hhmm(horodatage),
+            jour_relatif,
+            horodatage,
+        ),
+    )
+
+
+def _ensure_dim_temps(conn, timestamps, jour_relatif="reference_day"):
+    for ts in timestamps:
+        _ensure_dim_temps_point(conn, jour_relatif, ts)
+
+
 def ingest_data_json(conn):
     raw = _load("data.json")
 
@@ -64,9 +92,9 @@ def ingest_data_json(conn):
         conn.execute(
             """
             INSERT INTO region (
-                id_region, insee_code, name, latitude, longitude,
+                id, insee_code, name, latitude, longitude,
                 population_2023, annual_consumption_twh2024,
-                average_consumption_mw_2024, illustrative_peak_consumption_mw,
+                annual_consumption_mw_2024, illustrative_peak_consumption_mw,
                 connected_to_continental_grid, data_notes_population,
                 data_notes_illustrative_peak, data_notes_consumption
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -89,11 +117,11 @@ def ingest_data_json(conn):
         conn.execute(
             """
             INSERT INTO centrale (
-                id_centrale, name, latitude, longitude, commune, departement,
+                id, name, latitude, longitude, commune, departement,
                 reactor_count, installed_power_mw, available, initial_output_mw,
                 initial_load_ratio, soft_upper_bound_mw, soft_upper_bound_ratio,
                 initial_dispatchable_margin_mw, max_ramp_up_mw_15_min,
-                technical_penalty, values_are_simulated, id_region
+                technical_penalty, values_are_simulated, id_1
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
@@ -117,7 +145,7 @@ def ingest_data_json(conn):
                 """
                 INSERT INTO reacteur (
                     id_reacteur, name, installed_power_mw, minimum_design_power_mw,
-                    status, industrial_commisionning_date, data_kind, id_centrale
+                    status, industrial_commisionning_date, data_kind, id
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
@@ -136,7 +164,7 @@ def ingest_data_json(conn):
             INSERT INTO liaison (
                 id, bidirectional, distance_km, loss_percent, max_transfer_mw,
                 available, topology_is_synthetic, capacity_and_loss_are_simulated,
-                id_centrale, id_centrale_1
+                id_1, id_2
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
@@ -151,7 +179,7 @@ def ingest_data_json(conn):
     for r in raw.get("regions", []):
         for plant_id in r.get("external_entry_plant_ids", []):
             conn.execute(
-                "INSERT OR IGNORE INTO accessible_via2 (id_centrale, id_region) VALUES (?, ?)",
+                "INSERT OR IGNORE INTO accessible_via (id, id_1) VALUES (?, ?)",
                 (plant_id, r["id"]),
             )
 
@@ -161,7 +189,7 @@ def ingest_data_json(conn):
         scenario_id += 1
         conn.execute(
             """
-            INSERT INTO scenario (id, description, expected_result, additionnal_demand_mw, id_region)
+            INSERT INTO scenario (id, description, expected_result, additionnal_demand_mw, id_1)
             VALUES (?, ?, ?, ?, ?)
             """,
             (
@@ -173,12 +201,12 @@ def ingest_data_json(conn):
             override_id += 1
             conn.execute(
                 """
-                INSERT INTO scenario_override (id, initial_output_mw, soft_upper_bound_mw, id_1, id_centrale)
+                INSERT INTO scenario_override (id, initial_output_mw, soft_upper_bound_mw, id_1, id_2)
                 VALUES (?, ?, ?, ?, ?)
                 """,
                 (
                     override_id, override.get("initial_output_mw"),
-                    override.get("soft_upper_bound_mw"), scenario_id, plant_id,
+                    override.get("soft_upper_bound_mw"), plant_id, scenario_id,
                 ),
             )
 
@@ -204,7 +232,7 @@ def ingest_nuclear_temporal_params(conn):
                 max_ramp_down_mw_per_15min = ?,
                 minimum_power_fallback_used = ?,
                 values_are_simulated_except_maximum_power = ?
-            WHERE id_centrale = ?
+            WHERE id = ?
             """,
             (
                 p.get("initial_output_mw_at_23_45_previous_day"),
@@ -220,61 +248,53 @@ def ingest_nuclear_temporal_params(conn):
     return {"centrale_enrichie": count}
 
 
-def _ensure_pas_de_temps(conn, timestamps):
-    for i, ts in enumerate(timestamps):
-        conn.execute(
-            "INSERT OR IGNORE INTO pas_de_temps (horodatage, step_index) VALUES (?, ?)",
-            (ts, i),
-        )
+def ingest_fait_consommation(conn):
+    """Fusionne le profil de référence (96 pas, jour J) et l'état initial t-1
+    dans la même table de faits, distingués par type_mesure."""
+    row_id = 0
 
-
-def ingest_consommation_reference(conn):
     raw = _load("energia-journee-reference-consommation.json")
     timestamps = raw["timestamps"]
-    _ensure_pas_de_temps(conn, timestamps)
-
-    row_id = 0
+    _ensure_dim_temps(conn, timestamps, jour_relatif="reference_day")
     for r in raw.get("regions", []):
         for ts, valeur in zip(timestamps, r["consumption_mw"]):
             row_id += 1
             conn.execute(
                 """
-                INSERT INTO consommation_reference (id, consommation_mw, horodatage, id_region)
-                VALUES (?, ?, ?, ?)
+                INSERT INTO fait_consommation (id, consommation_mw, type_mesure, id_temps, id_1)
+                VALUES (?, ?, ?, ?, ?)
                 """,
-                (row_id, valeur, ts, r["id"]),
+                (row_id, valeur, "reference", _id_temps("reference_day", ts), r["id"]),
             )
 
-    return {"consommation_reference": row_id}
-
-
-def ingest_etat_initial(conn):
     # energia-journee-reference-avec-t-moins-1.json reprend la même série que
-    # energia-journee-reference-consommation.json (déjà ingérée) : on ne lit
-    # ici que le bloc initial_state_t_minus_1, propre à ce fichier.
+    # ci-dessus (déjà ingérée) : on ne lit ici que le bloc initial_state_t_minus_1,
+    # propre à ce fichier.
     raw = _load("energia-journee-reference-avec-t-moins-1.json")
     etat = raw["initial_state_t_minus_1"]
     horodatage = etat["timestamp"]
     jour_relatif = etat["relative_day"]
-
-    row_id = 0
+    _ensure_dim_temps_point(conn, jour_relatif, horodatage)
     for region_id, valeurs in etat["regions"].items():
         row_id += 1
         conn.execute(
             """
-            INSERT INTO etat_initial_regional (id, consommation_mw, horodatage, jour_relatif, id_region)
+            INSERT INTO fait_consommation (id, consommation_mw, type_mesure, id_temps, id_1)
             VALUES (?, ?, ?, ?, ?)
             """,
-            (row_id, valeurs["consumption_mw"], horodatage, jour_relatif, region_id),
+            (
+                row_id, valeurs["consumption_mw"], "initial_t_moins_1",
+                _id_temps(jour_relatif, horodatage), region_id,
+            ),
         )
 
-    return {"etat_initial_regional": row_id}
+    return {"fait_consommation": row_id}
 
 
 def ingest_production_non_pilotable(conn):
     raw = _load("energia-production-non-pilotable.json")
     timestamps = raw["timestamps"]
-    _ensure_pas_de_temps(conn, timestamps)
+    _ensure_dim_temps(conn, timestamps, jour_relatif="reference_day")
 
     for code, libelle in FILIERES.items():
         conn.execute(
@@ -292,10 +312,10 @@ def ingest_production_non_pilotable(conn):
             capacite_id += 1
             conn.execute(
                 """
-                INSERT INTO capacitee_instalee_non_pilotable (id, capacitee_mw, code_filiere, id_region)
+                INSERT INTO capacitee_instalee_non_pilotable (id, capacitee_mw, id_1, code_filiere)
                 VALUES (?, ?, ?, ?)
                 """,
-                (capacite_id, capacite_mw, code_filiere, r["id"]),
+                (capacite_id, capacite_mw, r["id"], code_filiere),
             )
 
         for code_filiere, valeurs in productions.items():
@@ -303,15 +323,15 @@ def ingest_production_non_pilotable(conn):
                 production_id += 1
                 conn.execute(
                     """
-                    INSERT INTO production_non_pilotable (id, production_mw, code_filiere, id_region, horodatage)
+                    INSERT INTO fait_production_non_pilotable (id, production_mw, code_filiere, id_temps, id_1)
                     VALUES (?, ?, ?, ?, ?)
                     """,
-                    (production_id, valeur, code_filiere, r["id"], ts),
+                    (production_id, valeur, code_filiere, _id_temps("reference_day", ts), r["id"]),
                 )
 
     return {
         "capacitee_instalee_non_pilotable": capacite_id,
-        "production_non_pilotable": production_id,
+        "fait_production_non_pilotable": production_id,
     }
 
 
@@ -326,37 +346,39 @@ def ingest_scenarios_phase3(conn):
         )
         for i, event in enumerate(s.get("events", [])):
             event_count += 1
+            debut, fin = event.get("start"), event.get("end")
+            _ensure_dim_temps_point(conn, "reference_day", debut)
+            _ensure_dim_temps_point(conn, "reference_day", fin)
             conn.execute(
                 """
-                INSERT INTO evenement_consommation (
-                    id_evenement_consommation, type, start_, end_, delta_mw,
-                    delta_percent, id_region, id_scenario_phase3
+                INSERT INTO fait_evenement_consommation (
+                    id_evenement_consommation, type, delta_mw, delta_percent,
+                    id_scenario_phase3, id, id_temps, id_temps_1
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
-                    f"{s['id']}#{i}", event.get("type"), event.get("start"),
-                    event.get("end"), event.get("delta_mw"), event.get("delta_percent"),
-                    event["region_id"], s["id"],
+                    f"{s['id']}#{i}", event.get("type"), event.get("delta_mw"),
+                    event.get("delta_percent"), s["id"], event["region_id"],
+                    _id_temps("reference_day", debut), _id_temps("reference_day", fin),
                 ),
             )
 
     return {
         "scenario_phase3": len(raw.get("scenarios", [])),
-        "evenement_consommation": event_count,
+        "fait_evenement_consommation": event_count,
     }
 
 
 def run_ingestion():
-    """Recrée le schéma depuis mcd2.sql puis recharge tous les JSON de fastapi/data.
-    Idempotent : rejouable sans accumulation de doublons."""
+    """Recrée le schéma depuis mcd_analytique.sql puis recharge tous les JSON
+    de fastapi/data. Idempotent : rejouable sans accumulation de doublons."""
     conn = get_connection()
     try:
         reset_schema(conn)
         summary = {}
         summary.update(ingest_data_json(conn))
         summary.update(ingest_nuclear_temporal_params(conn))
-        summary.update(ingest_consommation_reference(conn))
-        summary.update(ingest_etat_initial(conn))
+        summary.update(ingest_fait_consommation(conn))
         summary.update(ingest_production_non_pilotable(conn))
         summary.update(ingest_scenarios_phase3(conn))
         conn.commit()
