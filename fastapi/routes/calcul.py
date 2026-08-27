@@ -216,6 +216,12 @@ def charger_param_temps_nucleaire():
 
     return donnees_nucleaire
 
+def charger_production_nucleaire():
+    with open("data/data.json", "r", encoding="utf-8") as fichier:
+        production_nucleaire = json.load(fichier)
+
+    return production_nucleaire
+
 
 # ---------------------------------------------------------------------------
 # 12. Récupération des données du solaire en /4 d'heure
@@ -420,6 +426,28 @@ def calculer_un_pas_temps(
         puissance_precedente[plant_id] = nouvelle_puissance
 
     return puissance_precedente, historique
+
+# ---------------------------------------------------------------------------
+# 22. Calcul de l'énergie disponible dans les centrtales après contraintes
+# ---------------------------------------------------------------------------
+def calcul_marge_reelle_disponible(
+    puissance_precedente,
+    centrale
+):
+    puissance_souhaitee = centrale["maximum_power_mw"]
+
+    puissance_atteignable = puissance_reelle(
+        puissance_precedente,
+        puissance_souhaitee,
+        centrale
+    )
+
+    marge_reelle = (
+        puissance_atteignable
+        - puissance_precedente
+    )
+
+    return max(marge_reelle, 0)
 
 # ---------------------------------------------------------------------------
 # 23. Fonction qui vérifie si la perturbation est en cours à l'heure donnée.
