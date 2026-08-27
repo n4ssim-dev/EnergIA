@@ -182,6 +182,7 @@ liste des éléments à ajouter au Readme :
 - la formule ou les règles utilisées pour classer les centrales ;
 - les limites connues du prototype.
 
+---
 # nassim — Graphe & Dijkstra
 
 Le bout que je gère dans EnergIA. En gros : on prend `data/data.json`
@@ -268,7 +269,8 @@ flamanville -> chinon -> saint_laurent -> belleville -> bugey -> tricastin (949.
 - Quelques tests rudimentaires dans `tests/` (health, load-datastore,
   shortest-path). Ça vérifie que ça tourne, pas que c'est juste dans
   tous les cas.
-
+  
+---
 # EnergIA – Moteur de simulation temporelle
 
 ## Présentation
