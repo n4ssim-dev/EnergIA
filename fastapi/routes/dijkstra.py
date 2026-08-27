@@ -27,7 +27,6 @@ from .calcul import (
 
 router = APIRouter(prefix="/dijkstra")
 
-
 @router.get("/production-restante")
 def get_production_restante():
 
@@ -36,20 +35,27 @@ def get_production_restante():
 
     consommations = parcourir_journee(donnees_consommation)
 
-    production_solaire = recuperer_donnees_solaires(donnees_non_pilotables)
+    production_solaire = recuperer_donnees_solaires(
+        donnees_non_pilotables
+    )
 
-    production_eolien = recuperer_donnees_eolien(donnees_non_pilotables)
+    production_eolien = recuperer_donnees_eolien(
+        donnees_non_pilotables
+    )
 
     production_non_pilotable = production_hors_nucleaire(
-        production_solaire, production_eolien
+        production_solaire,
+        production_eolien
     )
 
     production_restante = calcul_production_restante_a_fournir(
-        consommations, production_non_pilotable
+        consommations,
+        production_non_pilotable
     )
 
-    return {"production_restante_a_fournir": production_restante}
-
+    return {
+        "production_restante_a_fournir": production_restante
+    }
 
 @router.get("/load-datastore")
 def load_datastore_route():
@@ -139,16 +145,14 @@ def get_anomalies():
     return {"count": len(anomalies), "anomalies": anomalies}
 
 
-def run_simulation(
-    region: str, augmentation_mw: float, etat_centrales: dict[str, float]
-):
+def run_simulation(region: str, augmentation_mw: float, etat_centrales: dict[str, float]):
     """Calcule la répartition d'une demande supplémentaire (MW) sur une région.
 
     Factorisée pour être appelable à la fois par `/dijkstra/calcule` et par
     `/simulation` (routes/api.py, héritées de python-service).
     """
     """ 
-    Ajout etat_centrales pour contenir  la puissance actuelle de chaque centrale.
+    Ajout etat_centrales pour  contenir  la puissance actuelle de chaque centrale.
     Il est fourni par la simulation globale et doit etre conservé d'un
     quart d'heure au suivant.
 
@@ -170,7 +174,10 @@ def run_simulation(
 
     for central in central_locales:
         # Puissance actuelle de la centrale
-        current_output_mw = etat_centrales.get(central.id, central.initial_output_mw)
+        current_output_mw = etat_centrales.get(
+            central.id,
+            central.initial_output_mw
+        )
 
         result = calcul_score(
             geodesic_distance_km=0,
@@ -179,7 +186,7 @@ def run_simulation(
             technical_penalty=central.technical_penalty,
             plant_id=central.id,
             local_plant_ids=region_data.local_plant_ids,
-            # initial_output_mw = central.initial_output_mw,
+            #initial_output_mw=central.initial_output_mw,
             current_output_mw=current_output_mw,
         )
         candidats.append(
@@ -187,8 +194,9 @@ def run_simulation(
                 "plant_id": central.id,
                 "score": result,
                 "soft_upper_bound_mw": central.soft_upper_bound_mw,
-                # "initial_output_mw": central.initial_output_mw,
+                #"initial_output_mw": central.initial_output_mw,
                 "current_output_mw": current_output_mw,
+
             }
         )
 
@@ -204,10 +212,8 @@ def run_simulation(
             central = store.centrales.get(d["plant_id"])
             if central is None:
                 continue
-
-            current_output_mw = etat_centrales.get(
-                central.id, central.initial_output_mw
-            )
+            
+            current_output_mw = etat_centrales.get(central.id,central.initial_output_mw)
 
             result = calcul_score(
                 geodesic_distance_km=d["distance_km"],
@@ -216,16 +222,18 @@ def run_simulation(
                 technical_penalty=central.technical_penalty,
                 plant_id=central.id,
                 local_plant_ids=region_data.local_plant_ids,
-                # initial_output_mw=central.initial_output_mw,
+                #initial_output_mw=central.initial_output_mw,
                 current_output_mw=current_output_mw,
+
             )
             candidats.append(
                 {
                     "plant_id": central.id,
                     "score": result,
                     "soft_upper_bound_mw": central.soft_upper_bound_mw,
-                    # "initial_output_mw": central.initial_output_mw,
+                    #"initial_output_mw": central.initial_output_mw,
                     "current_output_mw": current_output_mw,
+
                 }
             )
     else:
@@ -241,9 +249,10 @@ def run_simulation(
                 continue
             if plant_id in region_data.local_plant_ids:
                 continue
-
+            
             current_output_mw = etat_centrales.get(
-                central.id, central.initial_output_mw
+                central.id,
+                central.initial_output_mw
             )
 
             result = calcul_score(
@@ -255,19 +264,21 @@ def run_simulation(
                 local_plant_ids=region_data.local_plant_ids,
                 #initial_output_mw=central.initial_output_mw,
                 current_output_mw=current_output_mw,
+
             )
             candidats.append(
                 {
                     "plant_id": central.id,
                     "score": result,
                     "soft_upper_bound_mw": central.soft_upper_bound_mw,
-                    # "initial_output_mw": central.initial_output_mw,
+                    #"initial_output_mw": central.initial_output_mw,
                     "current_output_mw": current_output_mw,
+
                 }
             )
 
     candidats_tries = classer_candidats(candidats)
-    resultat = repartir_demande(augmentation_mw, candidats_tries, etat_centrales)
+    resultat = repartir_demande(augmentation_mw, candidats_tries,etat_centrales)
 
     reponse = {
         "region": region,
@@ -280,17 +291,14 @@ def run_simulation(
 
     return reponse
 
-
 @router.get("/calcule")
 def get_calcule(region: str, augmentation_mw: float):
     return run_simulation(region, augmentation_mw)
 
-
 # ----------------------------------------------------------------------------------------------------------------------
 # Automatiser la simulation  pour qu'il fasse l'ensemble des régions (13)
-# au méme moment pour une méme quart d'heure
-# Conserver l'état obtenu pour le quart d'heure suivant.
-# -----------------------------------------------------------------------------------------------------------------------
+# au meme moment pour une meme quart d'heure
+#-----------------------------------------------------------------------------------------------------------------------
 @router.get("/simulation-regions")
 def calculer_regions():
     donnees = charger_journee_reference()
@@ -299,14 +307,13 @@ def calculer_regions():
     resultats = []
 
     store = get_store()
-    
 
-    # Etat initial des centrales
+    # État initial des centrales
     etat_centrales = {
         plant_id: central.initial_output_mw
         for plant_id, central in store.centrales.items()
     }
-   
+
     for etape in journee:
 
         heure = etape["heure"]
@@ -314,28 +321,31 @@ def calculer_regions():
 
         resultats_heure = {}
 
-        # Calcul des 13 regions
+        # Calcul des 13 régions
         for region_id, demande in demandes.items():
-            print("AVANT", heure, region_id, etat_centrales)
+
             resultats_heure[region_id] = run_simulation(
-                region_id, demande, etat_centrales
+                region_id,
+                demande,
+                etat_centrales
             )
-        # print("APRES", heure, region_id, etat_centrales)
+
         # Sauvegarde de l'état des centrales à ce timestamp
         etat_centrales_timestamp = {
-            plant_id: puissance for plant_id, puissance in etat_centrales.items()
+            plant_id: puissance
+            for plant_id, puissance in etat_centrales.items()
         }
 
-        resultats.append(
-            {
-                "heure": heure,
-                "regions": resultats_heure,
-                "etat_centrales": etat_centrales_timestamp,
-            }
-        )
+        resultats.append({
+            "heure": heure,
+            "regions": resultats_heure,
+            "etat_centrales": etat_centrales_timestamp
+        })
 
-    return {"nombre_etapes": len(resultats), "journee": resultats[:2]}
-
+    return {
+        "nombre_etapes": len(resultats),
+        "journee": resultats
+    }
 
 # ---------------------------------------------------------------------------
 # Exposition des besoins résiduels par région et par /4 d'heure dernière version
