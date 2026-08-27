@@ -31,6 +31,8 @@ python-service/*.egg-info/
 .DS_Store
 Thumbs.db
 
+# Data
+*.db
 
 node_modules/
 
