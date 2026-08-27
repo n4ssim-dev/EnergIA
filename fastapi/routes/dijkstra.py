@@ -28,6 +28,17 @@ from .calcul import (
     calcul_marge_reelle_disponible
 )
 
+from typing import Optional
+from fastapi import APIRouter, Query
+from pydantic import BaseModel
+
+
+class Perturbation(BaseModel):
+    regionId: str
+    start: str
+    end: str
+    deltaMw: float
+
 router = APIRouter(prefix="/dijkstra")
 
 @router.get("/load-datastore")
@@ -272,8 +283,13 @@ def get_calcule(region: str, augmentation_mw: float):
 # Automatiser la simulation  pour qu'il fasse l'ensemble des régions (13)
 # au meme moment pour une meme quart d'heure
 #-----------------------------------------------------------------------------------------------------------------------
-@router.get("/simulation-regions")
-def calculer_regions():
+@router.post("/simulation-regions")
+def calculer_regions(
+    perturbations: Optional[list[Perturbation]] = None
+):
+    if perturbations is None:
+        perturbations = []
+
     donnees = charger_journee_reference()
     journee = parcourir_journee(donnees)
 
@@ -287,28 +303,40 @@ def calculer_regions():
         for plant_id, central in store.centrales.items()
     }
 
+    # Parcours des quarts d'heure
     for etape in journee:
 
         heure = etape["heure"]
         demandes = etape["consommations"]
 
+        # Résultats de toutes les régions pour CE quart d'heure
         resultats_heure = {}
 
-        # Calcul des 13 régions
+        # Parcours des 13 régions
         for region_id, demande in demandes.items():
+
+            # Ajouter la perturbation avant d'appliquer Dijkstra
+            demande_perturbee = appliquer_perturbation(
+                region_id,
+                heure,
+                demande,
+                perturbations
+            )
 
             resultats_heure[region_id] = run_simulation(
                 region_id,
-                demande,
+                demande_perturbee,
                 etat_centrales
             )
 
-        # Sauvegarde de l'état des centrales à ce timestamp
+        # Toutes les régions ont été calculées
+        # On sauvegarde l'état des centrales à CE timestamp
         etat_centrales_timestamp = {
             plant_id: puissance
             for plant_id, puissance in etat_centrales.items()
         }
 
+        # On ajoute UN résultat pour ce quart d'heure
         resultats.append({
             "heure": heure,
             "regions": resultats_heure,
@@ -317,9 +345,8 @@ def calculer_regions():
 
     return {
         "nombre_etapes": len(resultats),
-        "journee": resultats
+        "journee": resultats[:2]
     }
-
 # ---------------------------------------------------------------------------
 # Exposition des besoins résiduels par région et par /4 d'heure dernière version
 # ---------------------------------------------------------------------------
