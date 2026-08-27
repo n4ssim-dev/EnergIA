@@ -21,7 +21,47 @@ d'une nouvelle table liée (`region` reste l'entité de rattachement commune à
 `data.json` et aux 4 autres fichiers — c'est elle qui fait tenir le modèle en un
 seul MCD).
 
-## Table des associations (un seul MCD, à reproduire dans Looping)
+## Cible : consolidation en modèle en étoile
+
+Constat du MCD ci-dessus : `consommation_reference`, `etat_initial_regional` et
+`production_non_pilotable` sont trois tables de faits quasi identiques (une
+mesure numérique + FK région + FK horodatage), nées du fait qu'elles viennent
+de 3 fichiers JSON différents plutôt que d'une différence de nature. Et
+`pas_de_temps.horodatage` ne stocke que `HH:MM` : les JSON sources décrivent
+une seule journée de référence synthétique (`metadata.reference_date`, jamais
+persisté), donc la BDD ne sait pas dater ses lignes.
+
+Cible retenue :
+
+- **`pas_de_temps` devient `dim_temps`**, enrichie d'une vraie `date` (et
+  garde `step_index`) — pour que la BDD puisse un jour porter plusieurs
+  journées sans changer de schéma, même si l'ingestion n'écrit qu'une seule
+  date pour l'instant. `jour_relatif` (J / J-1), qui était une colonne de
+  `etat_initial_regional`, migre ici : c'est une propriété du pas de temps,
+  pas de la région.
+- **`consommation_reference` et `etat_initial_regional` fusionnent en une
+  seule table de faits `fait_consommation`**, même grain (région × temps),
+  distinguées par une colonne `type_mesure` (`reference` / `initial_t_moins_1`)
+  au lieu de deux tables séparées qu'il faut `UNION` pour les requêter
+  ensemble.
+- **`production_non_pilotable` devient `fait_production_non_pilotable`** —
+  inchangée dans sa forme (région × filière × temps), c'est déjà le grain
+  attendu d'une table de faits ; seul le renommage l'aligne sur les deux
+  autres.
+- **`capacite_installee_non_pilotable` ne devient pas une table de faits** :
+  c'est une capacité installée (photo statique par région/filière), pas une
+  série temporelle — pas de FK vers `dim_temps`, elle reste ce qu'elle est
+  déjà.
+- **`evenement_consommation` gagne deux FK vers `dim_temps`** (`debute` /
+  `termine`) à la place de `start_`/`end_` en `VARCHAR` libre, pour que ses
+  bornes soient des pas de temps réels comme le reste du modèle plutôt que du
+  texte non contraint.
+
+Le graphe du parc (`centrale`, `reacteur`, `liaison`, `scenario`,
+`scenario_override`) ne change pas : ce sont des entités de référence, pas des
+séries temporelles, elles n'ont rien à gagner à devenir des faits.
+
+## Table des associations (cible)
 
 | Association | Entité A | Card. A | Card. B | Entité B | Origine JSON |
 |---|---|---|---|---|---|
@@ -33,18 +73,19 @@ seul MCD).
 | concerne | scenario | (1,1) | (0,n) | region | `example_scenarios[].region_id` |
 | surcharge | scenario | (0,n) | (1,1) | scenario_override | `example_scenarios[].plant_overrides` |
 | cible | centrale | (0,n) | (1,1) | scenario_override | clé de `plant_overrides{plant_id: ...}` |
-| concerne | region | (0,n) | (1,1) | consommation_reference | `regions[].consumption_mw` |
-| horodate | pas_de_temps | (0,n) | (1,1) | consommation_reference | `timestamps[]` |
-| possede | region | (0,1) | (1,1) | etat_initial_regional | `initial_state_t_minus_1.regions` |
+| concerne | region | (0,n) | (1,1) | fait_consommation | `regions[].consumption_mw` + `initial_state_t_minus_1.regions`, fusionnés (discriminant `type_mesure`) |
+| horodate | dim_temps | (0,n) | (1,1) | fait_consommation | `timestamps[]` |
 | possede | region | (0,n) | (1,1) | capacite_installee_non_pilotable | `regions[].synthetic_installed_capacity_mw` |
 | concerne | filiere | (0,n) | (1,1) | capacite_installee_non_pilotable | clé `solar`/`wind` |
-| concerne | region | (0,n) | (1,1) | production_non_pilotable | `regions[].production_mw` |
-| concerne | filiere | (0,n) | (1,1) | production_non_pilotable | clé `solar`/`wind` |
-| horodate | pas_de_temps | (0,n) | (1,1) | production_non_pilotable | `timestamps[]` |
-| comprend | scenario_phase3 | (0,n) | (1,1) | evenement_consommation | `scenarios[].events[]` |
-| concerne | region | (0,n) | (1,1) | evenement_consommation | `events[].region_id` |
+| concerne | region | (0,n) | (1,1) | fait_production_non_pilotable | `regions[].production_mw` |
+| concerne | filiere | (0,n) | (1,1) | fait_production_non_pilotable | clé `solar`/`wind` |
+| horodate | dim_temps | (0,n) | (1,1) | fait_production_non_pilotable | `timestamps[]` |
+| comprend | scenario_phase3 | (0,n) | (1,1) | fait_evenement_consommation | `scenarios[].events[]` |
+| concerne | region | (0,n) | (1,1) | fait_evenement_consommation | `events[].region_id` |
+| debute | dim_temps | (0,n) | (1,1) | fait_evenement_consommation | `events[].window_start` |
+| termine | dim_temps | (0,n) | (1,1) | fait_evenement_consommation | `events[].window_end` |
 
-## Vue Mermaid — un seul diagramme
+## Vue Mermaid — cible
 
 ```mermaid
 erDiagram
@@ -56,16 +97,17 @@ erDiagram
     SCENARIO }o--|| REGION : concerne
     SCENARIO ||--o{ SCENARIO_OVERRIDE : surcharge
     CENTRALE ||--o{ SCENARIO_OVERRIDE : cible
-    REGION ||--o{ CONSOMMATION_REFERENCE : concerne
-    PAS_DE_TEMPS ||--o{ CONSOMMATION_REFERENCE : horodate
-    REGION |o--o| ETAT_INITIAL_REGIONAL : possede
+    REGION ||--o{ FAIT_CONSOMMATION : concerne
+    DIM_TEMPS ||--o{ FAIT_CONSOMMATION : horodate
     REGION ||--o{ CAPACITE_INSTALLEE_NON_PILOTABLE : possede
     FILIERE ||--o{ CAPACITE_INSTALLEE_NON_PILOTABLE : concerne
-    REGION ||--o{ PRODUCTION_NON_PILOTABLE : concerne
-    FILIERE ||--o{ PRODUCTION_NON_PILOTABLE : concerne
-    PAS_DE_TEMPS ||--o{ PRODUCTION_NON_PILOTABLE : horodate
-    SCENARIO_PHASE3 ||--o{ EVENEMENT_CONSOMMATION : comprend
-    REGION ||--o{ EVENEMENT_CONSOMMATION : concerne
+    REGION ||--o{ FAIT_PRODUCTION_NON_PILOTABLE : concerne
+    FILIERE ||--o{ FAIT_PRODUCTION_NON_PILOTABLE : concerne
+    DIM_TEMPS ||--o{ FAIT_PRODUCTION_NON_PILOTABLE : horodate
+    SCENARIO_PHASE3 ||--o{ FAIT_EVENEMENT_CONSOMMATION : comprend
+    REGION ||--o{ FAIT_EVENEMENT_CONSOMMATION : concerne
+    DIM_TEMPS ||--o{ FAIT_EVENEMENT_CONSOMMATION : debute
+    DIM_TEMPS ||--o{ FAIT_EVENEMENT_CONSOMMATION : termine
 
     REGION {
         string id PK
@@ -135,37 +177,37 @@ erDiagram
         float initial_output_mw
         float soft_upper_bound_mw
     }
-    PAS_DE_TEMPS {
-        string horodatage PK
+    DIM_TEMPS {
+        string id_temps PK
+        date date
+        string heure
         int step_index
+        string jour_relatif
     }
     FILIERE {
         string code_filiere PK
         string libelle_filiere
     }
-    CONSOMMATION_REFERENCE {
+    FAIT_CONSOMMATION {
+        string id PK
         float consommation_mw
-    }
-    ETAT_INITIAL_REGIONAL {
-        float consommation_mw
-        string horodatage
-        string jour_relatif
+        string type_mesure
     }
     CAPACITE_INSTALLEE_NON_PILOTABLE {
+        string id PK
         float capacite_mw
     }
-    PRODUCTION_NON_PILOTABLE {
+    FAIT_PRODUCTION_NON_PILOTABLE {
+        string id PK
         float production_mw
     }
     SCENARIO_PHASE3 {
         string id PK
         string name
     }
-    EVENEMENT_CONSOMMATION {
+    FAIT_EVENEMENT_CONSOMMATION {
         string id PK
         string type
-        string start
-        string end
         float delta_mw
         float delta_percent
     }
@@ -182,11 +224,18 @@ flottant.
   `region` et `centrale` : la première pour `local_plant_ids` (rattachement
   territorial, la centrale a exactement 1 région), la seconde pour
   `external_entry_plant_ids` (accès de secours, many-to-many).
-- `liaison`, `scenario_override`, `consommation_reference` et
-  `production_non_pilotable` sont chacune une entité à part entière reliée par
-  **deux associations** (voire trois pour `production_non_pilotable` : région,
-  filière, pas de temps) — jamais une colonne ajoutée à une ligne existante.
-  C'est le même principe partout dans ce document.
+- `liaison`, `scenario_override`, `fait_consommation` et
+  `fait_production_non_pilotable` sont chacune une entité à part entière
+  reliée par **deux associations** (voire trois pour
+  `fait_production_non_pilotable` : région, filière, temps ; quatre pour
+  `fait_evenement_consommation` : région, scénario phase 3, début, fin) —
+  jamais une colonne ajoutée à une ligne existante. C'est le même principe
+  partout dans ce document.
+- `fait_consommation` remplace les anciennes `consommation_reference` et
+  `etat_initial_regional` (même grain région × temps, `type_mesure` comme
+  discriminant) ; `dim_temps` remplace `pas_de_temps` en y ajoutant `date` et
+  `jour_relatif` — voir « Cible : consolidation en modèle en étoile » plus
+  haut pour le raisonnement complet.
 - `region` est le point de jonction entre `data.json` (parc nucléaire, graphe)
   et les 4 autres fichiers (séries temporelles, scénarios phase 3) : c'est elle
   qui permet de n'avoir qu'un seul MCD au lieu de deux schémas disjoints.
