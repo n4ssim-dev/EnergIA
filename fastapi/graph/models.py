@@ -13,7 +13,7 @@ class Centrale:
                  reactors=None, available=True, initial_output_mw=0.0,
                  initial_load_ratio=0.0, soft_upper_bound_mw=0.0,
                  soft_upper_bound_ratio=0.95, initial_dispatchable_margin_mw=0.0,
-                 max_ramp_up_mw_per_15_min=0.0, technical_penalty=1.0):
+                 max_ramp_up_mw_per_15_min=0.0,max_ramp_down_mw_per_15_min=0.0 ,technical_penalty=1.0):
         self.id = id
         self.name = name
         self.latitude = latitude
@@ -33,6 +33,7 @@ class Centrale:
         self.soft_upper_bound_ratio = soft_upper_bound_ratio
         self.initial_dispatchable_margin_mw = initial_dispatchable_margin_mw
         self.max_ramp_up_mw_per_15_min = max_ramp_up_mw_per_15_min
+        self.max_ramp_down_mw_per_15_min = max_ramp_down_mw_per_15_min
         self.technical_penalty = technical_penalty
 
     def available_capacity_mw(self):
