@@ -152,7 +152,7 @@ def run_simulation(region: str, augmentation_mw: float, etat_centrales: dict[str
     `/simulation` (routes/api.py, héritées de python-service).
     """
     """ 
-    Ajout etat_centrales pour  contenir  la puissance actuelle de chaque centrale.
+    Ajout etat_centrales pour contenir  la puissance actuelle de chaque centrale.
     Il est fourni par la simulation globale et doit etre conservé d'un
     quart d'heure au suivant.
 
@@ -298,6 +298,7 @@ def get_calcule(region: str, augmentation_mw: float):
 # ----------------------------------------------------------------------------------------------------------------------
 # Automatiser la simulation  pour qu'il fasse l'ensemble des régions (13)
 # au meme moment pour une meme quart d'heure
+# Conserver l'état obtenu pour le quart d'heure suivant.
 #-----------------------------------------------------------------------------------------------------------------------
 @router.get("/simulation-regions")
 def calculer_regions():
@@ -308,7 +309,7 @@ def calculer_regions():
 
     store = get_store()
 
-    # État initial des centrales
+    # Etat initial des centrales
     etat_centrales = {
         plant_id: central.initial_output_mw
         for plant_id, central in store.centrales.items()
