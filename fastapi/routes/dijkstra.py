@@ -348,7 +348,7 @@ def calculer_regions():
     }
 
 # ---------------------------------------------------------------------------
-# Exposition des besoins résiduels par région et par /4 d'heure
+# Exposition des besoins résiduels par région et par /4 d'heure dernière version
 # ---------------------------------------------------------------------------
 @router.get("/besoins-residuels")
 def get_besoins_residuels():
