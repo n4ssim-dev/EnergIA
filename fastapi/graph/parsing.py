@@ -35,6 +35,7 @@ def parse_centrale(raw):
         soft_upper_bound_ratio=sim.get("soft_upper_bound_ratio", 0.95),
         initial_dispatchable_margin_mw=sim.get("initial_dispatchable_margin_mw", 0.0),
         max_ramp_up_mw_per_15_min=sim.get("max_ramp_up_mw_per_15_min", 0.0),
+        max_ramp_down_mw_per_15_min=raw.get("max_ramp_down_mw_per_15_min", 0.0),
         technical_penalty=sim.get("technical_penalty", 1.0),
     )
 
@@ -68,3 +69,10 @@ def parse_liaison(raw):
         max_transfer_mw=raw["max_transfer_mw"],
         available=raw.get("available", True),
     )
+
+def indexer_params_temporels(raw_temporel):
+    plants = {}
+    for r in raw_temporel.get("plants",[]):
+        plants[r["plant_id"]]=r
+    return (plants)
+        

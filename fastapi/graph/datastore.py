@@ -2,10 +2,11 @@ import json
 from pathlib import Path
 
 from .models import Graph
-from .parsing import parse_centrale, parse_liaison, parse_region
+from .parsing import parse_centrale, parse_liaison, parse_region,indexer_params_temporels
 
 
 DATA_PATH = Path(__file__).parent.parent / "data" / "data.json"
+TEMPORAL_PARAMS_PATH = Path(__file__).parent.parent /"data"/"energia_parametres_temporels_nucleaire.json"
 
 # Conteneur central (centrales, régions, liaisons et graphe associé)
 
@@ -20,16 +21,22 @@ class DataStore:
         self.graph = Graph()
 
     def load(self, path=DATA_PATH):
+        raw_temporelle =TEMPORAL_PARAMS_PATH
         if not path.exists():
             raise FileNotFoundError(f"Fichier de données introuvable : {path}")
 
         with open(path, "r", encoding="utf-8") as f:
             raw = json.load(f)
 
+        with open(raw_temporelle,"r", encoding="utf-8") as a :
+            rawBis = json.load(a)
+
         self.metadata = raw.get("metadata", {})
         self.simulation_parameters = raw.get("simulation_parameters", {})
+        paramTemporelle = indexer_params_temporels(rawBis)
 
         for raw_plant in raw.get("plants", []):
+            raw_plant.update(paramTemporelle.get(raw_plant["id"],{}))
             centrale = parse_centrale(raw_plant)
             self.centrales[centrale.id] = centrale
             self.graph.add_node(centrale.id)
