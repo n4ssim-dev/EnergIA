@@ -1,6 +1,7 @@
 from haversine import haversine
 import json
 from .contraintes import (puissance_reelle)
+from datetime import datetime
 
 # ---------------------------------------------------------------------------
 # 1. Puissance disponible d'une centrale
@@ -420,4 +421,38 @@ def calculer_un_pas_temps(
 
     return puissance_precedente, historique
 
+# ---------------------------------------------------------------------------
+# 23. Fonction qui vérifie si la perturbation est en cours à l'heure donnée.
+# ---------------------------------------------------------------------------
 
+def perturbation_active(perturbation, heure):
+    """
+   Fonction qui vérifie si la perturbation est en cours à l'heure donnée.
+   retourne True or false
+    """
+
+    start = datetime.strptime(perturbation.start, "%H:%M").time()
+    end = datetime.strptime(perturbation.end, "%H:%M").time()
+    current = datetime.strptime(heure, "%H:%M").time()
+
+    return start <= current < end
+
+# ---------------------------------------------------------------------------
+# 24. Appliquer les perturbations actives à une région et une heure donnée.
+# ---------------------------------------------------------------------------
+def appliquer_perturbation(region_id, heure, demande_mw, perturbations):
+    """
+    Applique les perturbations actives à une région et une heure donnée.
+    """
+
+    demande_perturbee = demande_mw
+
+    for perturbation in perturbations:
+
+        if perturbation.regionId != region_id:
+            continue
+
+        if perturbation_active(perturbation, heure):
+            demande_perturbee += perturbation.deltaMw
+
+    return demande_perturbee
