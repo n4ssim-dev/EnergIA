@@ -22,7 +22,11 @@ from .calcul import (
     recuperer_donnees_solaires,
     recuperer_donnees_eolien,
     charger_journee_reference_hors_nucleaire,
-    calcul_besoins_residuels
+    calcul_besoins_residuels,
+    charger_param_temps_nucleaire,
+    charger_production_nucleaire,
+    calcul_puissanceDispo,
+    calcul_marge_reelle_disponible
 )
 
 router = APIRouter(prefix="/dijkstra")
@@ -350,3 +354,108 @@ def get_besoins_residuels():
     return {
         "besoins_residuels": besoins_residuels
     }
+
+@router.get("/simulation-complete")
+def simulation_complete():
+
+# - 1 calcul des besoins_residuels
+
+    donnees_consommation = charger_journee_reference()
+    donnees_non_pilotables = charger_journee_reference_hors_nucleaire()
+    #donnees_reseau = charger_param_temps_nucleaire()
+    production_nucleaire = charger_production_nucleaire()
+
+    journee = parcourir_journee(donnees_consommation)
+
+    production_solaire = recuperer_donnees_solaires(
+        donnees_non_pilotables
+    )
+
+    production_eolien = recuperer_donnees_eolien(
+        donnees_non_pilotables
+    )
+
+    production_non_pilotable = production_hors_nucleaire(
+        production_solaire,
+        production_eolien
+    )
+
+    besoins_residuels = calcul_besoins_residuels(
+        journee,
+        production_non_pilotable
+    )
+
+# - 2 allocation du nucléaire sur les besoins_residuels
+    #test
+    region_id = "occitanie"
+    index = 0
+
+    demande_mw = besoins_residuels[region_id][index]
+
+    region = next(
+        r
+        for r in production_nucleaire["regions"]
+        if r["id"] == region_id
+    )
+
+    # 12. Centrales candidates
+    candidats_ids = (
+        region["local_plant_ids"]
+        + region["external_entry_plant_ids"]
+    )
+
+    candidats = []
+
+    # 13. Construire les candidats
+    for plant_id in candidats_ids:
+
+        # Données du premier JSON
+        centrale_reseau = next(
+            plant
+            for plant in production_nucleaire["plants"]
+            if plant["id"] == plant_id
+        )
+
+        # Données temporelles
+        centrale_temporelle = next(
+            plant
+            for plant in charger_param_temps_nucleaire["plants"]
+            if plant["plant_id"] == plant_id
+        )
+
+        puissance_precedente = (
+            centrale_temporelle[
+                "initial_output_mw_at_23_45_previous_day"
+            ]
+        )
+
+        marge_reelle = calcul_marge_reelle_disponible(
+            puissance_precedente,
+            centrale_temporelle
+        )
+
+        candidats.append({
+            "plant_id": plant_id,
+            "puissance_precedente_mw": puissance_precedente,
+            "marge_reelle_disponible_mw": marge_reelle
+        })
+
+    # 14. Résultat temporaire
+    return {
+        "region": region_id,
+        "index": index,
+        "besoin_residuel_mw": demande_mw,
+        "candidats": candidats
+    }
+
+# - 3 application des contraintes = production_nucleaire_reelle
+
+# - 4 calcul des besoins encore non couverts
+# - 5 run_simulation pour chercher une centrale avec un surplus disponible
+
+    # return {
+    #     "besoins_residuels": ...,
+    #     "allocation_nucleaire": ...,
+    #     "production_nucleaire_reelle": ...,
+    #     "besoins_non_couverts": ...
+    # }
