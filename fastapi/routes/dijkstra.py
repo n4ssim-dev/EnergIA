@@ -497,7 +497,9 @@ def simulation_complete():
 
         # Etat t-1
         puissance_precedente = centrale_temporelle.initial_output_mw_at_23_45_previous_day
-      
+
+        #rampUP
+        rampUp = centrale_temporelle.max_ramp_up_mw_per_15_min
 
         etat_centrales[plant_id] = puissance_precedente
 
@@ -506,7 +508,9 @@ def simulation_complete():
                 "current_output_mw":
                     puissance_precedente,
                 "soft_upper_bound_mw":
-                    centrale_reseau["simulation"]["soft_upper_bound_mw"]
+                    centrale_reseau["simulation"]["soft_upper_bound_mw"],
+                "max_ramp_up_mw_per_15_min" : 
+                rampUp
         })
 
 # ---------------------------------------------------------
