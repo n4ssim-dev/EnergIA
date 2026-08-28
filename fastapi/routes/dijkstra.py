@@ -23,7 +23,9 @@ from .calcul import (
     recuperer_donnees_eolien,
     charger_journee_reference_hors_nucleaire,
     calcul_besoins_residuels,
-    appliquer_perturbation
+    charger_production_nucleaire,
+    charger_param_temps_nucleaire,
+    calcul_marge_reelle_disponible
 )
 
 from typing import Optional
@@ -38,36 +40,6 @@ class Perturbation(BaseModel):
     deltaMw: float
 
 router = APIRouter(prefix="/dijkstra")
-
-@router.get("/production-restante")
-def get_production_restante():
-
-    donnees_consommation = charger_journee_reference()
-    donnees_non_pilotables = charger_journee_reference_hors_nucleaire()
-
-    consommations = parcourir_journee(donnees_consommation)
-
-    production_solaire = recuperer_donnees_solaires(
-        donnees_non_pilotables
-    )
-
-    production_eolien = recuperer_donnees_eolien(
-        donnees_non_pilotables
-    )
-
-    production_non_pilotable = production_hors_nucleaire(
-        production_solaire,
-        production_eolien
-    )
-
-    production_restante = calcul_production_restante_a_fournir(
-        consommations,
-        production_non_pilotable
-    )
-
-    return {
-        "production_restante_a_fournir": production_restante
-    }
 
 @router.get("/load-datastore")
 def load_datastore_route():
@@ -407,3 +379,221 @@ def get_besoins_residuels():
     return {
         "besoins_residuels": besoins_residuels
     }
+
+@router.get("/simulation-complete")
+def simulation_complete():
+
+# ---------------------------------------------------------
+# 1. CHARGEMENT DES DONNÉES
+# ---------------------------------------------------------
+
+    donnees_consommation = charger_journee_reference()
+
+    donnees_non_pilotables = (charger_journee_reference_hors_nucleaire())
+
+    # data.json
+    production_nucleaire = charger_production_nucleaire()
+
+    # energia_parametres_temporels_nucleaire.json
+    donnees_nucleaires_temporelles = (charger_param_temps_nucleaire())
+
+# ---------------------------------------------------------
+# 2. CALCUL DU BESOIN RÉSIDUEL
+# ---------------------------------------------------------
+
+    journee = parcourir_journee(donnees_consommation)
+    production_solaire = recuperer_donnees_solaires(donnees_non_pilotables)
+    production_eolien = recuperer_donnees_eolien(donnees_non_pilotables)
+    production_non_pilotable = production_hors_nucleaire(production_solaire,production_eolien)
+    besoins_residuels = calcul_besoins_residuels(journee,production_non_pilotable)
+
+# ---------------------------------------------------------
+# 3. TEST OCCITANIE À 00:00
+   # ---------------------------------------------------------
+
+    region_id = "occitanie"
+    index = 0
+
+    demande_mw = besoins_residuels[region_id][index]
+
+# ---------------------------------------------------------
+# 4. RÉCUPÉRATION DE LA RÉGION
+# ---------------------------------------------------------
+
+    region = next(
+            r
+            for r in production_nucleaire["regions"]
+            if r["id"] == region_id
+    )
+
+# ---------------------------------------------------------
+# 5. CENTRALES CANDIDATES
+# ---------------------------------------------------------
+
+    candidats_ids = (
+        region["local_plant_ids"]
+        + region["external_entry_plant_ids"]
+    )
+
+    candidats = []
+
+    etat_centrales = {}
+
+# ---------------------------------------------------------
+# 6. CONSTRUCTION DES CANDIDATS
+# ---------------------------------------------------------
+
+    for plant_id in candidats_ids:
+
+        # Données du premier brief
+        centrale_reseau = next(
+            plant
+            for plant in production_nucleaire["plants"]
+            if plant["id"] == plant_id
+        )
+
+        # Données temporelles
+        centrale_temporelle = next(
+            plant
+            for plant in donnees_nucleaires_temporelles["plants"]
+            if plant["plant_id"] == plant_id
+        )
+
+        # Etat t-1
+        puissance_precedente = (
+            centrale_temporelle[
+                "initial_output_mw_at_23_45_previous_day"
+            ]
+        )
+
+        etat_centrales[plant_id] = puissance_precedente
+
+        candidats.append({
+                "plant_id": plant_id,
+                "current_output_mw":
+                    puissance_precedente,
+                "soft_upper_bound_mw":
+                    centrale_reseau["simulation"]["soft_upper_bound_mw"]
+        })
+
+# ---------------------------------------------------------
+# 7. RÉPARTITION SOUHAITÉE DU BESOIN
+# ---------------------------------------------------------
+
+        resultat_repartition = repartir_demande(demande_mw, candidats, etat_centrales.copy())
+
+# ---------------------------------------------------------
+# 8. APPLICATION DES CONTRAINTES RÉELLES
+# ---------------------------------------------------------
+
+        allocations_reelles = []
+
+        total_nucleaire_reellement_fourni = 0
+
+        for allocation in resultat_repartition["allocation"]:
+
+            plant_id = allocation["plant_id"]
+
+            allocation_souhaitee = allocation["allocated_mw"]
+
+            centrale_temporelle = next(
+                plant
+                for plant in donnees_nucleaires_temporelles["plants"]
+                if plant["plant_id"] == plant_id
+            )
+
+            # Etat réel avant le calcul
+            puissance_precedente = etat_centrales[plant_id]
+
+            # Ce que l'on souhaiterait atteindre
+            puissance_souhaitee = (puissance_precedente + allocation_souhaitee)
+
+# ---------------------------------------------
+# Contraintes 
+# ---------------------------------------------
+
+        nouvelle_puissance_reelle = puissance_reelle(
+            puissance_precedente,
+            puissance_souhaitee,
+            centrale_temporelle
+        )
+
+        # Ce que la centrale a réellement pu ajouter
+        production_reelle_fournie = (
+            nouvelle_puissance_reelle
+            - puissance_precedente
+        )
+
+        production_reelle_fournie = max(
+            production_reelle_fournie,
+            0
+        )
+
+        # Mise à jour de l'état
+        etat_centrales[plant_id] = (
+            nouvelle_puissance_reelle
+        )
+
+        total_nucleaire_reellement_fourni += (
+            production_reelle_fournie
+        )
+
+        allocations_reelles.append({
+            "plant_id": plant_id,
+
+            "puissance_precedente_mw":
+                puissance_precedente,
+
+            "allocation_souhaitee_mw":
+                allocation_souhaitee,
+
+            "puissance_souhaitee_mw":
+                puissance_souhaitee,
+
+            "puissance_reelle_mw":
+                nouvelle_puissance_reelle,
+
+            "production_reelle_fournie_mw":
+                production_reelle_fournie
+        })
+
+# ---------------------------------------------------------
+# 9. BESOIN QUI RESTE RÉELLEMENT NON COUVERT
+# ---------------------------------------------------------
+
+    besoin_non_couvert = max(
+        demande_mw
+        - total_nucleaire_reellement_fourni,
+         0
+    )
+
+# ---------------------------------------------------------
+# 10. RÉSULTAT
+# ---------------------------------------------------------
+
+    return {
+
+            "region": region_id,
+
+            "index": index,
+
+            "heure": donnees_consommation["timestamps"][index],
+
+            "besoin_residuel_mw":
+                demande_mw,
+
+            "repartition_souhaitee":
+                resultat_repartition,
+
+            "allocations_apres_contraintes":
+                allocations_reelles,
+
+            "production_nucleaire_reellement_fournie_mw":
+                total_nucleaire_reellement_fourni,
+
+            "besoin_non_couvert_mw":
+                besoin_non_couvert,
+
+            "etat_centrales_apres_calcul":
+                etat_centrales
+        }
