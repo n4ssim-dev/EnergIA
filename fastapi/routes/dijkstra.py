@@ -2,6 +2,7 @@ from fastapi import APIRouter, HTTPException
 
 from graph.datastore import get_store, reload_store, load_datastore
 from graph.serializers import serialize_centrale, serialize_liaison, serialize_region
+from .contraintes import puissance_reelle
 from .calcul import (
     calcul_score,
     repartir_demande,
@@ -23,6 +24,8 @@ from .calcul import (
     recuperer_donnees_eolien,
     charger_journee_reference_hors_nucleaire,
     calcul_besoins_residuels,
+    appliquer_perturbation,
+    calcul_puissanceDispo,
     charger_production_nucleaire,
     charger_param_temps_nucleaire,
     calcul_marge_reelle_disponible
@@ -32,7 +35,7 @@ from typing import Optional
 from fastapi import APIRouter, Query
 from pydantic import BaseModel
 
-
+# structurer les données perturbation
 class Perturbation(BaseModel):
     regionId: str
     start: str
@@ -180,6 +183,7 @@ def run_simulation(region: str, augmentation_mw: float, etat_centrales: dict[str
                 "soft_upper_bound_mw": central.soft_upper_bound_mw,
                 #"initial_output_mw": central.initial_output_mw,
                 "current_output_mw": current_output_mw,
+                "max_ramp_up_mw_per_15_min" : central.max_ramp_up_mw_per_15_min
 
             }
         )
@@ -217,6 +221,7 @@ def run_simulation(region: str, augmentation_mw: float, etat_centrales: dict[str
                     "soft_upper_bound_mw": central.soft_upper_bound_mw,
                     #"initial_output_mw": central.initial_output_mw,
                     "current_output_mw": current_output_mw,
+                    "max_ramp_up_mw_per_15_min" : central.max_ramp_up_mw_per_15_min
 
                 }
             )
@@ -257,11 +262,42 @@ def run_simulation(region: str, augmentation_mw: float, etat_centrales: dict[str
                     "soft_upper_bound_mw": central.soft_upper_bound_mw,
                     #"initial_output_mw": central.initial_output_mw,
                     "current_output_mw": current_output_mw,
+                    "max_ramp_up_mw_per_15_min" : central.max_ramp_up_mw_per_15_min
 
                 }
             )
+    print(f"\n===== {region} / {augmentation_mw} MW =====")
 
+    for candidat in candidats:
+        print(
+        candidat["plant_id"],
+        "current =", candidat["current_output_mw"],
+        "max =", candidat["soft_upper_bound_mw"],
+        "dispo =",
+         calcul_puissanceDispo(
+            candidat["soft_upper_bound_mw"],
+            candidat["current_output_mw"],
+            candidat["max_ramp_up_mw_per_15_min"],
+        )
+        )
     candidats_tries = classer_candidats(candidats)
+    print("\n==============================")
+    print(f"REGION : {region}")
+    print(f"DEMANDE : {augmentation_mw} MW")
+    print("CANDIDATS TRIÉS :")
+
+    for candidat in candidats_tries:
+        print(
+        f"  {candidat['plant_id']} | "
+        f"score={candidat['score']} | "
+        f"current={candidat['current_output_mw']} MW | "
+        f"max={candidat['soft_upper_bound_mw']} MW | "
+        f"disponible={calcul_puissanceDispo(
+            candidat['soft_upper_bound_mw'],
+            candidat['current_output_mw'],
+            candidat["max_ramp_up_mw_per_15_min"]
+        )} MW"
+    )
     resultat = repartir_demande(augmentation_mw, candidats_tries,etat_centrales)
 
     reponse = {
@@ -277,7 +313,11 @@ def run_simulation(region: str, augmentation_mw: float, etat_centrales: dict[str
 
 @router.get("/calcule")
 def get_calcule(region: str, augmentation_mw: float):
-    return run_simulation(region, augmentation_mw)
+    store = get_store()
+    etat_centrales = {plant_id: central.initial_output_mw
+                        for plant_id, central in store.centrales.items()
+}
+    return run_simulation(region, augmentation_mw,etat_centrales)
 
 # ----------------------------------------------------------------------------------------------------------------------
 # Automatiser la simulation  pour qu'il fasse l'ensemble des régions (13)
@@ -309,12 +349,13 @@ def calculer_regions(
         heure = etape["heure"]
         demandes = etape["consommations"]
 
-        # Résultats de toutes les régions pour CE quart d'heure
+        # Résultats de toutes les régions pour Ce quart d'heure
         resultats_heure = {}
 
         # Parcours des 13 régions
-        for region_id, demande in demandes.items():
-
+        for region_id, demande in demandes.items():  
+         if region_id in ["occitanie", "grand_est"]: # Test pour deux regions.
+            
             # Ajouter la perturbation avant d'appliquer Dijkstra
             demande_perturbee = appliquer_perturbation(
                 region_id,
@@ -330,13 +371,13 @@ def calculer_regions(
             )
 
         # Toutes les régions ont été calculées
-        # On sauvegarde l'état des centrales à CE timestamp
+        # On sauvegarde l'état des centrales à ce timestamp
         etat_centrales_timestamp = {
             plant_id: puissance
             for plant_id, puissance in etat_centrales.items()
         }
 
-        # On ajoute UN résultat pour ce quart d'heure
+        # On ajoute un résultat pour ce quart d'heure
         resultats.append({
             "heure": heure,
             "regions": resultats_heure,
@@ -386,7 +427,7 @@ def simulation_complete():
 # ---------------------------------------------------------
 # 1. CHARGEMENT DES DONNÉES
 # ---------------------------------------------------------
-
+    store = get_store()
     donnees_consommation = charger_journee_reference()
 
     donnees_non_pilotables = (charger_journee_reference_hors_nucleaire())
@@ -394,8 +435,7 @@ def simulation_complete():
     # data.json
     production_nucleaire = charger_production_nucleaire()
 
-    # energia_parametres_temporels_nucleaire.json
-    donnees_nucleaires_temporelles = (charger_param_temps_nucleaire())
+
 
 # ---------------------------------------------------------
 # 2. CALCUL DU BESOIN RÉSIDUEL
@@ -453,18 +493,11 @@ def simulation_complete():
         )
 
         # Données temporelles
-        centrale_temporelle = next(
-            plant
-            for plant in donnees_nucleaires_temporelles["plants"]
-            if plant["plant_id"] == plant_id
-        )
+        centrale_temporelle = store.centrales.get(plant_id)
 
         # Etat t-1
-        puissance_precedente = (
-            centrale_temporelle[
-                "initial_output_mw_at_23_45_previous_day"
-            ]
-        )
+        puissance_precedente = centrale_temporelle.initial_output_mw_at_23_45_previous_day
+      
 
         etat_centrales[plant_id] = puissance_precedente
 
@@ -496,12 +529,7 @@ def simulation_complete():
 
             allocation_souhaitee = allocation["allocated_mw"]
 
-            centrale_temporelle = next(
-                plant
-                for plant in donnees_nucleaires_temporelles["plants"]
-                if plant["plant_id"] == plant_id
-            )
-
+            centrale_temporelle = store.centrales.get(plant_id)
             # Etat réel avant le calcul
             puissance_precedente = etat_centrales[plant_id]
 
@@ -512,60 +540,60 @@ def simulation_complete():
 # Contraintes 
 # ---------------------------------------------
 
-        nouvelle_puissance_reelle = puissance_reelle(
-            puissance_precedente,
-            puissance_souhaitee,
-            centrale_temporelle
+            nouvelle_puissance_reelle = puissance_reelle(
+                puissance_precedente,
+                puissance_souhaitee,
+                centrale_temporelle
         )
 
-        # Ce que la centrale a réellement pu ajouter
-        production_reelle_fournie = (
-            nouvelle_puissance_reelle
-            - puissance_precedente
-        )
+            # Ce que la centrale a réellement pu ajouter
+            production_reelle_fournie = (
+                nouvelle_puissance_reelle
+                - puissance_precedente
+            )
 
-        production_reelle_fournie = max(
-            production_reelle_fournie,
-            0
-        )
+            production_reelle_fournie = max(
+                production_reelle_fournie,
+                0
+            )
 
         # Mise à jour de l'état
-        etat_centrales[plant_id] = (
-            nouvelle_puissance_reelle
-        )
+            etat_centrales[plant_id] = (
+                nouvelle_puissance_reelle
+            )
 
-        total_nucleaire_reellement_fourni += (
-            production_reelle_fournie
-        )
-
-        allocations_reelles.append({
-            "plant_id": plant_id,
-
-            "puissance_precedente_mw":
-                puissance_precedente,
-
-            "allocation_souhaitee_mw":
-                allocation_souhaitee,
-
-            "puissance_souhaitee_mw":
-                puissance_souhaitee,
-
-            "puissance_reelle_mw":
-                nouvelle_puissance_reelle,
-
-            "production_reelle_fournie_mw":
+            total_nucleaire_reellement_fourni += (
                 production_reelle_fournie
-        })
+            )
+
+            allocations_reelles.append({
+                "plant_id": plant_id,
+
+                "puissance_precedente_mw":
+                    puissance_precedente,
+
+                "allocation_souhaitee_mw":
+                    allocation_souhaitee,
+
+                "puissance_souhaitee_mw":
+                    puissance_souhaitee,
+
+                "puissance_reelle_mw":
+                    nouvelle_puissance_reelle,
+
+                "production_reelle_fournie_mw":
+                    production_reelle_fournie
+            })
 
 # ---------------------------------------------------------
 # 9. BESOIN QUI RESTE RÉELLEMENT NON COUVERT
 # ---------------------------------------------------------
 
-    besoin_non_couvert = max(
-        demande_mw
-        - total_nucleaire_reellement_fourni,
-         0
-    )
+        besoin_non_couvert = max(
+            demande_mw
+            - total_nucleaire_reellement_fourni,
+            0
+        )
 
 # ---------------------------------------------------------
 # 10. RÉSULTAT
