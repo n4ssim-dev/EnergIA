@@ -23,14 +23,15 @@ from .calcul import (
     recuperer_donnees_eolien,
     charger_journee_reference_hors_nucleaire,
     calcul_besoins_residuels,
-    appliquer_perturbation
+    appliquer_perturbation,
+    calcul_puissanceDispo
 )
 
 from typing import Optional
 from fastapi import APIRouter, Query
 from pydantic import BaseModel
 
-
+# structurer les données perturbation
 class Perturbation(BaseModel):
     regionId: str
     start: str
@@ -208,6 +209,7 @@ def run_simulation(region: str, augmentation_mw: float, etat_centrales: dict[str
                 "soft_upper_bound_mw": central.soft_upper_bound_mw,
                 #"initial_output_mw": central.initial_output_mw,
                 "current_output_mw": current_output_mw,
+                "max_ramp_up_mw_per_15_min" : central.max_ramp_up_mw_per_15_min
 
             }
         )
@@ -245,6 +247,7 @@ def run_simulation(region: str, augmentation_mw: float, etat_centrales: dict[str
                     "soft_upper_bound_mw": central.soft_upper_bound_mw,
                     #"initial_output_mw": central.initial_output_mw,
                     "current_output_mw": current_output_mw,
+                    "max_ramp_up_mw_per_15_min" : central.max_ramp_up_mw_per_15_min
 
                 }
             )
@@ -285,11 +288,42 @@ def run_simulation(region: str, augmentation_mw: float, etat_centrales: dict[str
                     "soft_upper_bound_mw": central.soft_upper_bound_mw,
                     #"initial_output_mw": central.initial_output_mw,
                     "current_output_mw": current_output_mw,
+                    "max_ramp_up_mw_per_15_min" : central.max_ramp_up_mw_per_15_min
 
                 }
             )
+    print(f"\n===== {region} / {augmentation_mw} MW =====")
 
+    for candidat in candidats:
+        print(
+        candidat["plant_id"],
+        "current =", candidat["current_output_mw"],
+        "max =", candidat["soft_upper_bound_mw"],
+        "dispo =",
+         calcul_puissanceDispo(
+            candidat["soft_upper_bound_mw"],
+            candidat["current_output_mw"],
+            candidat["max_ramp_up_mw_per_15_min"],
+        )
+        )
     candidats_tries = classer_candidats(candidats)
+    print("\n==============================")
+    print(f"REGION : {region}")
+    print(f"DEMANDE : {augmentation_mw} MW")
+    print("CANDIDATS TRIÉS :")
+
+    for candidat in candidats_tries:
+        print(
+        f"  {candidat['plant_id']} | "
+        f"score={candidat['score']} | "
+        f"current={candidat['current_output_mw']} MW | "
+        f"max={candidat['soft_upper_bound_mw']} MW | "
+        f"disponible={calcul_puissanceDispo(
+            candidat['soft_upper_bound_mw'],
+            candidat['current_output_mw'],
+            candidat["max_ramp_up_mw_per_15_min"]
+        )} MW"
+    )
     resultat = repartir_demande(augmentation_mw, candidats_tries,etat_centrales)
 
     reponse = {
@@ -337,12 +371,13 @@ def calculer_regions(
         heure = etape["heure"]
         demandes = etape["consommations"]
 
-        # Résultats de toutes les régions pour CE quart d'heure
+        # Résultats de toutes les régions pour Ce quart d'heure
         resultats_heure = {}
 
         # Parcours des 13 régions
-        for region_id, demande in demandes.items():
-
+        for region_id, demande in demandes.items():  
+         if region_id in ["occitanie", "grand_est"]: # Test pour deux regions.
+            
             # Ajouter la perturbation avant d'appliquer Dijkstra
             demande_perturbee = appliquer_perturbation(
                 region_id,
@@ -358,13 +393,13 @@ def calculer_regions(
             )
 
         # Toutes les régions ont été calculées
-        # On sauvegarde l'état des centrales à CE timestamp
+        # On sauvegarde l'état des centrales à ce timestamp
         etat_centrales_timestamp = {
             plant_id: puissance
             for plant_id, puissance in etat_centrales.items()
         }
 
-        # On ajoute UN résultat pour ce quart d'heure
+        # On ajoute un résultat pour ce quart d'heure
         resultats.append({
             "heure": heure,
             "regions": resultats_heure,
