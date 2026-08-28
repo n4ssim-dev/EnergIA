@@ -1,17 +1,34 @@
 from haversine import haversine
 import json
-from .contraintes import (puissance_reelle)
+from .contraintes import (puissance_reelle,calcul_puissance_max)
 from datetime import datetime
 
 # ---------------------------------------------------------------------------
 # 1. Puissance disponible d'une centrale
 # ---------------------------------------------------------------------------
-def calcul_puissanceDispo(soft_upper_bound_mw, initial_output_mw):
-    maxPower = soft_upper_bound_mw
-    powerOutput = initial_output_mw
-    availablePower = maxPower - powerOutput
-    return max(availablePower, 0)
+# def calcul_puissanceDispo(soft_upper_bound_mw, initial_output_mw):
+#     maxPower = soft_upper_bound_mw
+#     powerOutput = initial_output_mw
+#     availablePower = maxPower - powerOutput
+#     return max(availablePower, 0)
 
+# Nouvelle fonction calcul_puissanceDispo en ajoutant le calcul de la rampe :
+# combien de MW une centrale peut encore augmenter pendant le prochain quart d'heure 
+
+def calcul_puissanceDispo(soft_upper_bound_mw,initial_output_mw,max_ramp_up_mw_per_15_min):
+    maxPower = soft_upper_bound_mw   # puissance maximale autorisée
+    powerOutput = initial_output_mw   
+    rampUp = max_ramp_up_mw_per_15_min  # la vitesse à laquelle la centrale peut augmenter
+
+    # maxReachablePower : Puissance maximale que la centrale peut réellement atteindre au prochain quart d'heure
+    maxReachablePower = min(
+        maxPower,
+        powerOutput + rampUp
+    )
+
+    availablePower = maxReachablePower - powerOutput
+
+    return max(availablePower, 0)
 
 # ---------------------------------------------------------------------------
 # 2. Taux de saturation d'une centrale (ratio 0-1, pas un pourcentage)
@@ -135,19 +152,24 @@ def repartir_demande(
             plant_id,
             candidat["current_output_mw"]
         )
-
+        
+        soft_upper_bound_mw = candidat["soft_upper_bound_mw"]
+        max_ramp_up_mw_per_15_min = candidat["max_ramp_up_mw_per_15_min"]
+        
         available_power = calcul_puissanceDispo(
-            candidat["soft_upper_bound_mw"],
-            current_output_mw
+            soft_upper_bound_mw,
+            current_output_mw,
+            max_ramp_up_mw_per_15_min
+
         )
-        print(
-        "CENTRALE",
-        plant_id,
-        "current =", current_output_mw,
-        "max =", candidat["soft_upper_bound_mw"],
-        "disponible =", available_power,
-        "demande restante =", demand_left
-        )
+        # print(
+        # "----------------------------CENTRALE----------------------------------",
+        # plant_id,
+        # "current =", current_output_mw,
+        # "max =", candidat["soft_upper_bound_mw"],
+        # "disponible =", available_power,
+        # "demande restante =", demand_left
+        # )
         if available_power <= 0:
             continue
 
@@ -161,12 +183,12 @@ def repartir_demande(
             "allocated_mw": allocation_candidat
         })
 
-        print(
-        "ALLOCATION",
-        plant_id,
-        "+", allocation_candidat,
-        "→", current_output_mw + allocation_candidat
-        )
+        # print(
+        # " ************************** ALLOCATION ********************************",
+        # plant_id,
+        # "+", allocation_candidat,
+        # "→", current_output_mw + allocation_candidat
+        # )
         
         # Mise à jour de l'état global
         etat_centrales[plant_id] = (
@@ -430,23 +452,13 @@ def calculer_un_pas_temps(
 # ---------------------------------------------------------------------------
 # 22. Calcul de l'énergie disponible dans les centrtales après contraintes
 # ---------------------------------------------------------------------------
-def calcul_marge_reelle_disponible(
-    puissance_precedente,
-    centrale
-):
-    puissance_souhaitee = centrale["maximum_power_mw"]
+def calcul_marge_reelle_disponible(puissance_precedente,centrale):
+    puissance_souhaitee = calcul_puissance_max(centrale)
 
-    puissance_atteignable = puissance_reelle(
-        puissance_precedente,
-        puissance_souhaitee,
-        centrale
-    )
+    puissance_atteignable = puissance_reelle(puissance_precedente,puissance_souhaitee,centrale)
 
-    marge_reelle = (
-        puissance_atteignable
-        - puissance_precedente
-    )
-
+    marge_reelle = ( puissance_atteignable - puissance_precedente)
+    
     return max(marge_reelle, 0)
 
 # ---------------------------------------------------------------------------
