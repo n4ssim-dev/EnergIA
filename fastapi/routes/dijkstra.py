@@ -25,7 +25,8 @@ from .calcul import (
     calcul_besoins_residuels,
     charger_production_nucleaire,
     charger_param_temps_nucleaire,
-    calcul_marge_reelle_disponible
+    calcul_marge_reelle_disponible,
+    appliquer_perturbation
 )
 
 from typing import Optional
@@ -541,59 +542,35 @@ def simulation_complete():
         allocations_reelles.append({
             "plant_id": plant_id,
 
-            "puissance_precedente_mw":
-                puissance_precedente,
+            "puissance_precedente_mw": puissance_precedente,
 
-            "allocation_souhaitee_mw":
-                allocation_souhaitee,
+            "allocation_souhaitee_mw": allocation_souhaitee,
 
-            "puissance_souhaitee_mw":
-                puissance_souhaitee,
+            "puissance_souhaitee_mw": puissance_souhaitee,
 
-            "puissance_reelle_mw":
-                nouvelle_puissance_reelle,
+            "puissance_reelle_mw":nouvelle_puissance_reelle,
 
-            "production_reelle_fournie_mw":
-                production_reelle_fournie
+            "production_reelle_fournie_mw":production_reelle_fournie
         })
 
 # ---------------------------------------------------------
 # 9. BESOIN QUI RESTE RÉELLEMENT NON COUVERT
 # ---------------------------------------------------------
 
-    besoin_non_couvert = max(
-        demande_mw
-        - total_nucleaire_reellement_fourni,
-         0
-    )
+    besoin_non_couvert = max(demande_mw - total_nucleaire_reellement_fourni,0)
 
 # ---------------------------------------------------------
 # 10. RÉSULTAT
 # ---------------------------------------------------------
 
     return {
-
             "region": region_id,
-
             "index": index,
-
             "heure": donnees_consommation["timestamps"][index],
-
-            "besoin_residuel_mw":
-                demande_mw,
-
-            "repartition_souhaitee":
-                resultat_repartition,
-
-            "allocations_apres_contraintes":
-                allocations_reelles,
-
-            "production_nucleaire_reellement_fournie_mw":
-                total_nucleaire_reellement_fourni,
-
-            "besoin_non_couvert_mw":
-                besoin_non_couvert,
-
-            "etat_centrales_apres_calcul":
-                etat_centrales
+            "besoin_residuel_mw":demande_mw,
+            "repartition_souhaitee":resultat_repartition,
+            "allocations_apres_contraintes":allocations_reelles,
+            "production_nucleaire_reellement_fournie_mw":total_nucleaire_reellement_fourni,
+            "besoin_non_couvert_mw":besoin_non_couvert,
+            "etat_centrales_apres_calcul":etat_centrales
         }
