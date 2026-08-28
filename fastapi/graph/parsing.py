@@ -36,6 +36,7 @@ def parse_centrale(raw):
         initial_dispatchable_margin_mw=sim.get("initial_dispatchable_margin_mw", 0.0),
         max_ramp_up_mw_per_15_min=sim.get("max_ramp_up_mw_per_15_min", 0.0),
         max_ramp_down_mw_per_15_min=raw.get("max_ramp_down_mw_per_15_min", 0.0),
+        initial_output_mw_at_23_45_previous_day = raw.get("initial_output_mw_at_23_45_previous_day", 0.0),
         technical_penalty=sim.get("technical_penalty", 1.0),
     )
 
