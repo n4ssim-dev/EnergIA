@@ -19,7 +19,7 @@ def calcul_puissance_min(centrale):
 # ---------------------------------------------------------------------------
 
 def calcul_vitesse_montee(centrale):
-    rampUp = centrale["max_ramp_up_mw_per_15_min"]
+    rampUp = centrale.max_ramp_up_mw_per_15_min
     return rampUp
 
 # ---------------------------------------------------------------------------
