@@ -1,6 +1,6 @@
 from haversine import haversine
 import json
-from .contraintes import (puissance_reelle)
+from .contraintes import (puissance_reelle,calcul_puissance_max)
 from datetime import datetime
 
 # ---------------------------------------------------------------------------
@@ -452,23 +452,13 @@ def calculer_un_pas_temps(
 # ---------------------------------------------------------------------------
 # 22. Calcul de l'énergie disponible dans les centrtales après contraintes
 # ---------------------------------------------------------------------------
-def calcul_marge_reelle_disponible(
-    puissance_precedente,
-    centrale
-):
-    puissance_souhaitee = centrale["maximum_power_mw"]
+def calcul_marge_reelle_disponible(puissance_precedente,centrale):
+    puissance_souhaitee = calcul_puissance_max(centrale)
 
-    puissance_atteignable = puissance_reelle(
-        puissance_precedente,
-        puissance_souhaitee,
-        centrale
-    )
+    puissance_atteignable = puissance_reelle(puissance_precedente,puissance_souhaitee,centrale)
 
-    marge_reelle = (
-        puissance_atteignable
-        - puissance_precedente
-    )
-
+    marge_reelle = ( puissance_atteignable - puissance_precedente)
+    
     return max(marge_reelle, 0)
 
 # ---------------------------------------------------------------------------

@@ -2,6 +2,7 @@ from fastapi import APIRouter, HTTPException
 
 from graph.datastore import get_store, reload_store, load_datastore
 from graph.serializers import serialize_centrale, serialize_liaison, serialize_region
+from .contraintes import puissance_reelle
 from .calcul import (
     calcul_score,
     repartir_demande,
@@ -312,7 +313,11 @@ def run_simulation(region: str, augmentation_mw: float, etat_centrales: dict[str
 
 @router.get("/calcule")
 def get_calcule(region: str, augmentation_mw: float):
-    return run_simulation(region, augmentation_mw)
+    store = get_store()
+    etat_centrales = {plant_id: central.initial_output_mw
+                        for plant_id, central in store.centrales.items()
+}
+    return run_simulation(region, augmentation_mw,etat_centrales)
 
 # ----------------------------------------------------------------------------------------------------------------------
 # Automatiser la simulation  pour qu'il fasse l'ensemble des régions (13)
@@ -422,7 +427,7 @@ def simulation_complete():
 # ---------------------------------------------------------
 # 1. CHARGEMENT DES DONNÉES
 # ---------------------------------------------------------
-
+    store = get_store()
     donnees_consommation = charger_journee_reference()
 
     donnees_non_pilotables = (charger_journee_reference_hors_nucleaire())
@@ -430,8 +435,7 @@ def simulation_complete():
     # data.json
     production_nucleaire = charger_production_nucleaire()
 
-    # energia_parametres_temporels_nucleaire.json
-    donnees_nucleaires_temporelles = (charger_param_temps_nucleaire())
+
 
 # ---------------------------------------------------------
 # 2. CALCUL DU BESOIN RÉSIDUEL
@@ -489,18 +493,11 @@ def simulation_complete():
         )
 
         # Données temporelles
-        centrale_temporelle = next(
-            plant
-            for plant in donnees_nucleaires_temporelles["plants"]
-            if plant["plant_id"] == plant_id
-        )
+        centrale_temporelle = store.centrales.get(plant_id)
 
         # Etat t-1
-        puissance_precedente = (
-            centrale_temporelle[
-                "initial_output_mw_at_23_45_previous_day"
-            ]
-        )
+        puissance_precedente = centrale_temporelle.initial_output_mw_at_23_45_previous_day
+      
 
         etat_centrales[plant_id] = puissance_precedente
 
@@ -532,12 +529,7 @@ def simulation_complete():
 
             allocation_souhaitee = allocation["allocated_mw"]
 
-            centrale_temporelle = next(
-                plant
-                for plant in donnees_nucleaires_temporelles["plants"]
-                if plant["plant_id"] == plant_id
-            )
-
+            centrale_temporelle = store.centrales.get(plant_id)
             # Etat réel avant le calcul
             puissance_precedente = etat_centrales[plant_id]
 
@@ -548,60 +540,60 @@ def simulation_complete():
 # Contraintes 
 # ---------------------------------------------
 
-        nouvelle_puissance_reelle = puissance_reelle(
-            puissance_precedente,
-            puissance_souhaitee,
-            centrale_temporelle
+            nouvelle_puissance_reelle = puissance_reelle(
+                puissance_precedente,
+                puissance_souhaitee,
+                centrale_temporelle
         )
 
-        # Ce que la centrale a réellement pu ajouter
-        production_reelle_fournie = (
-            nouvelle_puissance_reelle
-            - puissance_precedente
-        )
+            # Ce que la centrale a réellement pu ajouter
+            production_reelle_fournie = (
+                nouvelle_puissance_reelle
+                - puissance_precedente
+            )
 
-        production_reelle_fournie = max(
-            production_reelle_fournie,
-            0
-        )
+            production_reelle_fournie = max(
+                production_reelle_fournie,
+                0
+            )
 
         # Mise à jour de l'état
-        etat_centrales[plant_id] = (
-            nouvelle_puissance_reelle
-        )
+            etat_centrales[plant_id] = (
+                nouvelle_puissance_reelle
+            )
 
-        total_nucleaire_reellement_fourni += (
-            production_reelle_fournie
-        )
-
-        allocations_reelles.append({
-            "plant_id": plant_id,
-
-            "puissance_precedente_mw":
-                puissance_precedente,
-
-            "allocation_souhaitee_mw":
-                allocation_souhaitee,
-
-            "puissance_souhaitee_mw":
-                puissance_souhaitee,
-
-            "puissance_reelle_mw":
-                nouvelle_puissance_reelle,
-
-            "production_reelle_fournie_mw":
+            total_nucleaire_reellement_fourni += (
                 production_reelle_fournie
-        })
+            )
+
+            allocations_reelles.append({
+                "plant_id": plant_id,
+
+                "puissance_precedente_mw":
+                    puissance_precedente,
+
+                "allocation_souhaitee_mw":
+                    allocation_souhaitee,
+
+                "puissance_souhaitee_mw":
+                    puissance_souhaitee,
+
+                "puissance_reelle_mw":
+                    nouvelle_puissance_reelle,
+
+                "production_reelle_fournie_mw":
+                    production_reelle_fournie
+            })
 
 # ---------------------------------------------------------
 # 9. BESOIN QUI RESTE RÉELLEMENT NON COUVERT
 # ---------------------------------------------------------
 
-    besoin_non_couvert = max(
-        demande_mw
-        - total_nucleaire_reellement_fourni,
-         0
-    )
+        besoin_non_couvert = max(
+            demande_mw
+            - total_nucleaire_reellement_fourni,
+            0
+        )
 
 # ---------------------------------------------------------
 # 10. RÉSULTAT
