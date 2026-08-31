@@ -496,3 +496,46 @@ def appliquer_perturbation(region_id, heure, demande_mw, perturbations):
             demande_perturbee += perturbation.deltaMw
 
     return demande_perturbee
+
+# ------------------------------------------------------------------------------
+# 26. Fonction qui retourne les besoins résiduels par région et par /4 d'heure
+# ------------------------------------------------------------------------------
+
+def get_besoins_solaires_eoliens():
+
+    donnees_non_pilotables = charger_journee_reference_hors_nucleaire()
+
+    production_solaire = recuperer_donnees_solaires(
+        donnees_non_pilotables
+    )
+
+    production_eolien = recuperer_donnees_eolien(
+        donnees_non_pilotables
+    )
+    
+    return {
+        "solaires": production_solaire,
+        "eoliens" : production_eolien
+    }
+
+# -------------------------------------------------------------------------
+# 27. Fonction pour calculer la réserve minimale 
+#--------------------------------------------------------------------------
+def calculer_reserve(etat_centrales, store):
+    capacite_max_totale = 0
+    production_actuelle_totale = 0
+
+    for plant_id, current_output in etat_centrales.items():
+        central = store.centrales.get(plant_id)
+
+        if central is None:
+            continue
+
+        capacite_max_totale += central.soft_upper_bound_mw
+        production_actuelle_totale += current_output
+
+    reserve_disponible = (
+        capacite_max_totale - production_actuelle_totale
+    )
+
+    return max(reserve_disponible,0)
