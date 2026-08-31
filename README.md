@@ -496,8 +496,143 @@ Si le résultat est supérieur à 0, cette puissance n’a pas pu être couverte
 
 **A COMPLETER**
 
+
 ## Perturbation de consommation
-**A COMPLETER**
+
+Une perturbation de consommation est un événement temporaire qui modifie la demande électrique d'une région pendant une période donnée.
+
+Elle est définie par :
+
+* `regionId` : identifiant de la région concernée ;
+* `start` : heure de début de la perturbation ;
+* `end` : heure de fin de la perturbation ;
+* `deltaMw` : variation de consommation en MW.
+
+### Exemple
+
+```json
+"perturbations": [
+  {
+    "regionId": "ile_de_france",
+    "start": "00:00",
+    "end": "00:15",
+    "deltaMw": -500
+  },
+  {
+    "regionId": "grand_est",
+    "start": "10:00",
+    "end": "12:30",
+    "deltaMw": -12
+  }
+]
+```
+
+Une valeur positive de `deltaMw` augmente la consommation tandis qu'une valeur négative la diminue.
+
+Par exemple, si la consommation normale de l'Île-de-France est de `5 335 MW` et qu'une perturbation de `-500 MW` est active :
+
+```text
+Consommation normale
+       5 335 MW
+          ↓
+Perturbation
+       -500 MW
+          ↓
+Consommation perturbée
+       4 835 MW
+```
+
+La consommation perturbée est ensuite utilisée comme demande d'entrée pour le calcul de répartition des centrales.
+
+### Application temporelle
+
+La perturbation est appliquée uniquement lorsque :
+
+1. la région de la perturbation correspond à la région en cours de calcul ;
+2. l'heure du quart d'heure se situe dans l'intervalle `[start, end]`.
+
+Par exemple :
+
+```text
+Perturbation Grand Est
+10:00 → 12:30
+deltaMw = -12 MW
+```
+
+Elle est donc prise en compte lors des quarts d'heure concernés :
+
+```text
+10:00 → -12 MW
+10:15 → -12 MW
+10:30 → -12 MW
+...
+12:15 → -12 MW
+```
+Puis elle n'est plus appliquée à partir de `12:30`.
+
+### Fonction `appliquer_perturbation`
+
+La fonction `appliquer_perturbation` reçoit :
+
+```python
+appliquer_perturbation(
+    region_id,
+    heure,
+    demande_mw,
+    perturbations
+)
+```
+
+Elle vérifie si une perturbation est active pour la région et le quart d'heure courant.
+
+Si une perturbation correspond, elle modifie la demande :
+
+```text
+demande_perturbée = demande_normale + deltaMw
+```
+
+La demande ainsi obtenue est ensuite transmise au calcul Dijkstra.
+
+### Absence de perturbation
+
+Le paramètre `perturbations` peut être `null`.
+
+Dans ce cas, aucune perturbation n'est appliquée et la consommation normale est utilisée pour la simulation.
+
+```json
+"perturbations": null
+```
+
+Le comportement est alors équivalent à :
+
+```text
+demande perturbée = demande normale
+```
+
+### Déroulement dans la simulation
+
+Les perturbations sont appliquées **avant le lancement du calcul Dijkstra** pour chaque région et chaque quart d'heure.
+
+Le déroulement est donc :
+
+```text
+Consommation normale
+        ↓
+Vérification des perturbations
+        ↓
+Application de deltaMw si une perturbation est active
+        ↓
+Consommation perturbée
+        ↓
+Dijkstra
+        ↓
+Répartition de la demande entre les centrales
+        ↓
+Mise à jour de l'état du parc
+```
+
+Ainsi, une perturbation de consommation influence directement la demande à satisfaire par le parc de centrales pendant la période concernée.
+
 
 ## Principales limites connues
 **A COMPLETER**
