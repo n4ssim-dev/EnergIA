@@ -29,7 +29,9 @@ from .calcul import (
     charger_production_nucleaire,
     charger_param_temps_nucleaire,
     calcul_marge_reelle_disponible,
-    appliquer_perturbation
+    appliquer_perturbation,
+    get_besoins_solaires_eoliens,
+    calculer_reserve
 )
 
 from typing import Optional
@@ -323,6 +325,7 @@ def get_calcule(region: str, augmentation_mw: float):
 # ----------------------------------------------------------------------------------------------------------------------
 # Automatiser la simulation  pour qu'il fasse l'ensemble des régions (13)
 # au meme moment pour une meme quart d'heure
+# Intégration demande résiduelle 
 #-----------------------------------------------------------------------------------------------------------------------
 @router.post("/simulation-regions")
 def calculer_regions(
@@ -330,10 +333,11 @@ def calculer_regions(
 ):
     if perturbations is None:
         perturbations = []
-
+    # Réserve minimale 
+    reserve_minimale_mw = 2000
     donnees = charger_journee_reference()
     journee = parcourir_journee(donnees)
-
+    indice_heure=0
     resultats = []
 
     store = get_store()
@@ -343,6 +347,8 @@ def calculer_regions(
         plant_id: central.initial_output_mw
         for plant_id, central in store.centrales.items()
     }
+    # Retourner les besoins solaires et eoliens  
+    besoins_solaires_eoliens = get_besoins_solaires_eoliens()
 
     # Parcours des quarts d'heure
     for etape in journee:
@@ -356,7 +362,7 @@ def calculer_regions(
         # Parcours des 13 régions
         for region_id, demande in demandes.items():  
          if region_id in ["occitanie", "grand_est"]: # Test pour deux regions.
-            
+    
             # Ajouter la perturbation avant d'appliquer Dijkstra
             demande_perturbee = appliquer_perturbation(
                 region_id,
@@ -364,10 +370,16 @@ def calculer_regions(
                 demande,
                 perturbations
             )
-
+            # Intégration de la demande résiduelle 
+            demande_residuelle = (
+            demande_perturbee
+            -besoins_solaires_eoliens["solaires"][region_id][indice_heure]
+            -besoins_solaires_eoliens["eoliens"][region_id][indice_heure]
+            )
+           
             resultats_heure[region_id] = run_simulation(
                 region_id,
-                demande_perturbee,
+                demande_residuelle,
                 etat_centrales
             )
 
@@ -377,17 +389,35 @@ def calculer_regions(
             plant_id: puissance
             for plant_id, puissance in etat_centrales.items()
         }
+        
+        # calculer la réserve du parc global
 
+        reserve_disponible = calculer_reserve(etat_centrales,store)
+
+       # Comparer à la réserve minimale
+        if reserve_disponible < reserve_minimale_mw:
+            statut = "degrade"
+        else:
+            statut = "normal" 
+        
         # On ajoute un résultat pour ce quart d'heure
         resultats.append({
             "heure": heure,
             "regions": resultats_heure,
-            "etat_centrales": etat_centrales_timestamp
+            "consommation_mw":demande_residuelle,
+            "solaire_mw":besoins_solaires_eoliens["solaires"][region_id][indice_heure],
+            "eolien_mw":besoins_solaires_eoliens["eoliens"][region_id][indice_heure],
+            "etat_centrales": etat_centrales_timestamp,
+            "reserve_disponible_mw": reserve_disponible ,
+            "reserve_minimale_mw": reserve_minimale_mw,
+            "statut":statut
         })
+        #Incrémenter pour récuperer le prochain quart d'heure
+        indice_heure +=1
 
     return {
         "nombre_etapes": len(resultats),
-        "journee": resultats[:2]
+        "journee": resultats[:10]
     }
 # ---------------------------------------------------------------------------
 # Exposition des besoins résiduels par région et par /4 d'heure dernière version
