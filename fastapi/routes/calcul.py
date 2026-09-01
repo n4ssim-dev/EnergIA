@@ -156,14 +156,19 @@ def repartir_demande(
         soft_upper_bound_mw = candidat["soft_upper_bound_mw"]
         max_ramp_up_mw_per_15_min = candidat["max_ramp_up_mw_per_15_min"]
         
-        available_power = calcul_puissanceDispo(
-            soft_upper_bound_mw,
-            current_output_mw,
-            max_ramp_up_mw_per_15_min
-
-        )
+        # available_power = calcul_puissanceDispo(
+        #     soft_upper_bound_mw,
+        #     current_output_mw,
+        #     max_ramp_up_mw_per_15_min
+        # )
+        
+        # Nouvelle calcul de la puissance disponible
+        donnees_nucleaires = charger_param_temps_nucleaire()
+        puissance_precedente = calcul_puissance_precedente(donnees_nucleaires)
+        available_power = calcul_marge_reelle_disponible(puissance_precedente,etat_centrales)
+        
         # print(
-        # "----------------------------CENTRALE----------------------------------",
+        # "----------------------------CENTRALE---------------------------------------",
         # plant_id,
         # "current =", current_output_mw,
         # "max =", candidat["soft_upper_bound_mw"],
@@ -457,7 +462,7 @@ def calcul_marge_reelle_disponible(puissance_precedente,centrale):
 
     puissance_atteignable = puissance_reelle(puissance_precedente,puissance_souhaitee,centrale)
 
-    marge_reelle = ( puissance_atteignable - puissance_precedente)
+    marge_reelle = (puissance_atteignable - puissance_precedente)
     
     return max(marge_reelle, 0)
 
