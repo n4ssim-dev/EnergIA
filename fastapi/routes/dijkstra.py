@@ -29,6 +29,7 @@ from .calcul import (
     charger_production_nucleaire,
     charger_param_temps_nucleaire,
     calcul_marge_reelle_disponible,
+    appliquer_perturbation,
     get_besoins_solaires_eoliens,
     calculer_reserve
 )
@@ -634,28 +635,13 @@ def simulation_complete():
 # ---------------------------------------------------------
 
     return {
-
             "region": region_id,
-
             "index": index,
-
             "heure": donnees_consommation["timestamps"][index],
-
-            "besoin_residuel_mw":
-                demande_mw,
-
-            "repartition_souhaitee":
-                resultat_repartition,
-
-            "allocations_apres_contraintes":
-                allocations_reelles,
-
-            "production_nucleaire_reellement_fournie_mw":
-                total_nucleaire_reellement_fourni,
-
-            "besoin_non_couvert_mw":
-                besoin_non_couvert,
-
-            "etat_centrales_apres_calcul":
-                etat_centrales
+            "besoin_residuel_mw":demande_mw,
+            "repartition_souhaitee":resultat_repartition,
+            "allocations_apres_contraintes":allocations_reelles,
+            "production_nucleaire_reellement_fournie_mw":total_nucleaire_reellement_fourni,
+            "besoin_non_couvert_mw":besoin_non_couvert,
+            "etat_centrales_apres_calcul":etat_centrales
         }
