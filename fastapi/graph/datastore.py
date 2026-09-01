@@ -1,12 +1,10 @@
-import json
+import sqlite3
 from pathlib import Path
 
-from .models import Graph
-from .parsing import parse_centrale, parse_liaison, parse_region,indexer_params_temporels
+from .models import Centrale, Graph, Liaison, Reactor, Region
 
 
-DATA_PATH = Path(__file__).parent.parent / "data" / "data.json"
-TEMPORAL_PARAMS_PATH = Path(__file__).parent.parent /"data"/"energia_parametres_temporels_nucleaire.json"
+DB_PATH = Path(__file__).parent.parent / "data" / "analytics.db"
 
 # Conteneur central (centrales, régions, liaisons et graphe associé)
 
@@ -17,40 +15,106 @@ class DataStore:
         self.centrales = {}
         self.regions = {}
         self.liaisons = []
-        self.timestamps = []  
+        self.timestamps = []
         self.graph = Graph()
 
-    def load(self, path=DATA_PATH):
-        raw_temporelle =TEMPORAL_PARAMS_PATH
+    def load(self, path=DB_PATH):
         if not path.exists():
-            raise FileNotFoundError(f"Fichier de données introuvable : {path}")
+            raise FileNotFoundError(f"Base de données introuvable : {path}")
 
-        with open(path, "r", encoding="utf-8") as f:
-            raw = json.load(f)
+        conn = sqlite3.connect(path)
+        conn.row_factory = sqlite3.Row
+        try:
+            self._load_regions(conn)
+            self._load_centrales(conn)
+            self._load_liaisons(conn)
+        finally:
+            conn.close()
 
-        with open(raw_temporelle,"r", encoding="utf-8") as a :
-            rawBis = json.load(a)
+        return self
 
-        self.metadata = raw.get("metadata", {})
-        self.simulation_parameters = raw.get("simulation_parameters", {})
-        paramTemporelle = indexer_params_temporels(rawBis)
+    def _load_regions(self, conn):
+        local_plant_ids = {}
+        for row in conn.execute("SELECT id, id_1 FROM centrale"):
+            local_plant_ids.setdefault(row["id_1"], []).append(row["id"])
 
-        for raw_plant in raw.get("plants", []):
-            raw_plant.update(paramTemporelle.get(raw_plant["id"],{}))
-            centrale = parse_centrale(raw_plant)
+        external_entry_plant_ids = {}
+        for row in conn.execute("SELECT id, id_1 FROM accessible_via"):
+            external_entry_plant_ids.setdefault(row["id_1"], []).append(row["id"])
+
+        for row in conn.execute("SELECT * FROM region"):
+            region = Region(
+                id=row["id"],
+                insee_code=row["insee_code"] or "",
+                name=row["name"],
+                latitude=row["latitude"],
+                longitude=row["longitude"],
+                population_2023=row["population_2023"] or 0,
+                annual_consumption_twh_2024=row["annual_consumption_twh2024"] or 0.0,
+                average_consumption_mw_2024=row["annual_consumption_mw_2024"] or 0.0,
+                illustrative_peak_consumption_mw=row["illustrative_peak_consumption_mw"] or 0.0,
+                connected_to_continental_grid=bool(row["connected_to_continental_grid"]),
+                local_plant_ids=local_plant_ids.get(row["id"], []),
+                external_entry_plant_ids=external_entry_plant_ids.get(row["id"], []),
+            )
+            self.regions[region.id] = region
+
+    def _load_centrales(self, conn):
+        region_names = {r["id"]: r["name"] for r in conn.execute("SELECT id, name FROM region")}
+
+        reactors_by_centrale = {}
+        for row in conn.execute("SELECT * FROM reacteur"):
+            reactors_by_centrale.setdefault(row["id"], []).append(
+                Reactor(
+                    id=row["id_reacteur"],
+                    name=row["name"],
+                    installed_power_mw=row["installed_power_mw"],
+                    minimum_design_power_mw=row["minimum_design_power_mw"] or 0,
+                    status=row["status"] or "unknown",
+                )
+            )
+
+        for row in conn.execute("SELECT * FROM centrale"):
+            centrale = Centrale(
+                id=row["id"],
+                name=row["name"],
+                latitude=row["latitude"],
+                longitude=row["longitude"],
+                commune=row["commune"] or "",
+                department=row["departement"] or "",
+                region_id=row["id_1"],
+                region_name=region_names.get(row["id_1"], ""),
+                reactor_count=row["reactor_count"],
+                installed_power_mw=row["installed_power_mw"],
+                reactors=reactors_by_centrale.get(row["id"], []),
+                available=bool(row["available"]),
+                initial_output_mw=row["initial_output_mw"] or 0.0,
+                initial_load_ratio=row["initial_load_ratio"] or 0.0,
+                soft_upper_bound_mw=row["soft_upper_bound_mw"] or row["installed_power_mw"],
+                soft_upper_bound_ratio=row["soft_upper_bound_ratio"] or 0.95,
+                initial_dispatchable_margin_mw=row["initial_dispatchable_margin_mw"] or 0.0,
+                max_ramp_up_mw_per_15_min=row["max_ramp_up_mw_15_min"] or 0.0,
+                max_ramp_down_mw_per_15_min=row["max_ramp_down_mw_per_15min"] or 0.0,
+                initial_output_mw_at_23_45_previous_day=row["initial_output_mw_at_23_45_previous_day"] or 0.0,
+                technical_penalty=row["technical_penalty"] or 1.0,
+            )
             self.centrales[centrale.id] = centrale
             self.graph.add_node(centrale.id)
 
-        for raw_region in raw.get("regions", []):
-            region = parse_region(raw_region)
-            self.regions[region.id] = region
-
-        for raw_edge in raw.get("plant_edges", []):
-            liaison = parse_liaison(raw_edge)
+    def _load_liaisons(self, conn):
+        for row in conn.execute("SELECT * FROM liaison"):
+            liaison = Liaison(
+                id=row["id"],
+                from_id=row["id_1"],
+                to_id=row["id_2"],
+                bidirectional=bool(row["bidirectional"]),
+                distance_km=row["distance_km"],
+                loss_percent=row["loss_percent"],
+                max_transfer_mw=row["max_transfer_mw"],
+                available=bool(row["available"]),
+            )
             self.liaisons.append(liaison)
             self.graph.add_edge(liaison)
-
-        return self
 
     def verify(self):
         # vérifie la cohérence des données chargées et retourne la liste des anomalies détectées.
@@ -115,7 +179,7 @@ class DataStore:
         return anomalies
 
 
-def load_datastore(path=DATA_PATH):
+def load_datastore(path=DB_PATH):
     """Fonction utilitaire réutilisable ailleurs (routes API, tests, etc.)."""
     return DataStore().load(path)
 
