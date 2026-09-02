@@ -17,7 +17,7 @@ services:
       PORT: 3000
 
   langage:
-    image: ollama/ollama:latest
+    image: ollama/ollama:0.9.2
     container_name: energia_ollama
     ports:
       - "11434:11434"
@@ -33,4 +33,6 @@ services:
               count: all
               capabilities: [gpu]
 
+
 # modèle chargement : docker exec -it energia_ollama ollama pull qwen2.5:7b
+# docker compose exec langage ollama run qwen2.5:7b "Bonjour"
