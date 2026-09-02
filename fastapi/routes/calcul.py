@@ -1,7 +1,14 @@
 from haversine import haversine
-import json
+import sqlite3
 from .contraintes import (puissance_reelle,calcul_puissance_max)
+from .db import DB_PATH
 from datetime import datetime
+
+
+def _connect():
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    return conn
 
 # ---------------------------------------------------------------------------
 # 1. Puissance disponible d'une centrale
@@ -17,7 +24,7 @@ from datetime import datetime
 
 def calcul_puissanceDispo(soft_upper_bound_mw,initial_output_mw,max_ramp_up_mw_per_15_min):
     maxPower = soft_upper_bound_mw   # puissance maximale autorisée
-    powerOutput = initial_output_mw   
+    powerOutput = initial_output_mw 
     rampUp = max_ramp_up_mw_per_15_min  # la vitesse à laquelle la centrale peut augmenter
 
     # maxReachablePower : Puissance maximale que la centrale peut réellement atteindre au prochain quart d'heure
@@ -152,29 +159,13 @@ def repartir_demande(
             plant_id,
             candidat["current_output_mw"]
         )
-        
-        soft_upper_bound_mw = candidat["soft_upper_bound_mw"]
-        max_ramp_up_mw_per_15_min = candidat["max_ramp_up_mw_per_15_min"]
-        
-        # available_power = calcul_puissanceDispo(
-        #     soft_upper_bound_mw,
-        #     current_output_mw,
-        #     max_ramp_up_mw_per_15_min
-        # )
-        
-        # Nouvelle calcul de la puissance disponible
-        donnees_nucleaires = charger_param_temps_nucleaire()
-        puissance_precedente = calcul_puissance_precedente(donnees_nucleaires)
-        available_power = calcul_marge_reelle_disponible(puissance_precedente,etat_centrales)
-        
-        # print(
-        # "----------------------------CENTRALE---------------------------------------",
-        # plant_id,
-        # "current =", current_output_mw,
-        # "max =", candidat["soft_upper_bound_mw"],
-        # "disponible =", available_power,
-        # "demande restante =", demand_left
-        # )
+
+        # Marge réellement mobilisable en tenant compte des contraintes
+        # techniques de la centrale (vitesse de rampe montée/descente,
+        # bornes min/max réelles), plutôt que du seul plafond souple.
+        centrale = candidat["centrale"]
+        available_power = calcul_marge_reelle_disponible(current_output_mw, centrale)
+
         if available_power <= 0:
             continue
 
@@ -223,31 +214,266 @@ def calcul_distance_region(region_data, central):
     return (result)
 
 # ---------------------------------------------------------------------------
-# 11. Import des JSON
+# 11. Chargement depuis analytics.db (reconstruit la forme des anciens JSON,
+#     pour ne rien changer aux fonctions/routes qui consomment ces données)
 # ---------------------------------------------------------------------------
 def charger_journee_reference_hors_nucleaire():
-    with open("data/energia-production-non-pilotable.json", "r", encoding="utf-8") as fichier:
-        donnees_hors_nucleaire = json.load(fichier)
+    conn = _connect()
+    try:
+        timestamps = [
+            row["heure"] for row in conn.execute(
+                "SELECT heure FROM dim_temps WHERE jour_relatif = 'reference_day' "
+                "ORDER BY step_index"
+            )
+        ]
 
-    return donnees_hors_nucleaire
+        regions_meta = {r["id"]: r["name"] for r in conn.execute("SELECT id, name FROM region")}
+
+        capacites = {}
+        for row in conn.execute(
+            "SELECT id_1 AS region_id, code_filiere, capacitee_mw "
+            "FROM capacitee_instalee_non_pilotable"
+        ):
+            capacites.setdefault(row["region_id"], {})[row["code_filiere"]] = row["capacitee_mw"]
+
+        productions = {}
+        for row in conn.execute(
+            "SELECT fp.id_1 AS region_id, fp.code_filiere, fp.production_mw "
+            "FROM fait_production_non_pilotable fp "
+            "JOIN dim_temps dt ON dt.id_temps = fp.id_temps "
+            "WHERE dt.jour_relatif = 'reference_day' "
+            "ORDER BY fp.id_1, fp.code_filiere, dt.step_index"
+        ):
+            productions.setdefault(row["region_id"], {}).setdefault(
+                row["code_filiere"], []
+            ).append(row["production_mw"])
+
+        regions = [
+            {
+                "id": region_id,
+                "name": regions_meta.get(region_id, ""),
+                "synthetic_installed_capacity_mw": capacites.get(region_id, {}),
+                "production_mw": productions.get(region_id, {}),
+            }
+            for region_id in productions
+        ]
+
+        return {"timestamps": timestamps, "regions": regions}
+    finally:
+        conn.close()
+
 
 def charger_journee_reference():
-    with open("data/energia-journee-reference-avec-t-moins-1.json", "r", encoding="utf-8") as fichier:
-        donnees = json.load(fichier)
+    conn = _connect()
+    try:
+        timestamps = [
+            row["heure"] for row in conn.execute(
+                "SELECT heure FROM dim_temps WHERE jour_relatif = 'reference_day' "
+                "ORDER BY step_index"
+            )
+        ]
 
-    return donnees
+        regions_meta = {r["id"]: r["name"] for r in conn.execute("SELECT id, name FROM region")}
+
+        consommations = {}
+        for row in conn.execute(
+            "SELECT fc.id_1 AS region_id, fc.consommation_mw "
+            "FROM fait_consommation fc "
+            "JOIN dim_temps dt ON dt.id_temps = fc.id_temps "
+            "WHERE fc.type_mesure = 'reference' AND dt.jour_relatif = 'reference_day' "
+            "ORDER BY fc.id_1, dt.step_index"
+        ):
+            consommations.setdefault(row["region_id"], []).append(row["consommation_mw"])
+
+        regions = [
+            {
+                "id": region_id,
+                "name": regions_meta.get(region_id, ""),
+                "consumption_mw": valeurs,
+            }
+            for region_id, valeurs in consommations.items()
+        ]
+
+        etat_t_moins_1 = {}
+        horodatage = None
+        jour_relatif = None
+        for row in conn.execute(
+            "SELECT fc.id_1 AS region_id, fc.consommation_mw, dt.heure, dt.jour_relatif "
+            "FROM fait_consommation fc "
+            "JOIN dim_temps dt ON dt.id_temps = fc.id_temps "
+            "WHERE fc.type_mesure = 'initial_t_moins_1'"
+        ):
+            horodatage = row["heure"]
+            jour_relatif = row["jour_relatif"]
+            etat_t_moins_1[row["region_id"]] = {
+                "name": regions_meta.get(row["region_id"], ""),
+                "consumption_mw": row["consommation_mw"],
+            }
+
+        return {
+            "timestamps": timestamps,
+            "regions": regions,
+            "initial_state_t_minus_1": {
+                "timestamp": horodatage,
+                "relative_day": jour_relatif,
+                "regions": etat_t_moins_1,
+            },
+        }
+    finally:
+        conn.close()
+
 
 def charger_param_temps_nucleaire():
-    with open("data/energia_parametres_temporels_nucleaire.json", "r", encoding="utf-8") as fichier:
-        donnees_nucleaire = json.load(fichier)
+    conn = _connect()
+    try:
+        plants = [
+            {
+                "plant_id": row["id"],
+                "plant_name": row["name"],
+                "initial_output_mw_at_23_45_previous_day": row["initial_output_mw_at_23_45_previous_day"],
+                "minimum_operating_power_mw": row["minimum_operating_power_mw"],
+                "maximum_power_mw": row["installed_power_mw"],
+                "max_ramp_up_mw_per_15_min": row["max_ramp_up_mw_15_min"],
+                "max_ramp_down_mw_per_15_min": row["max_ramp_down_mw_per_15min"],
+                "available": bool(row["available"]),
+                "minimum_power_fallback_used": bool(row["minimum_power_fallback_used"]),
+                "values_are_simulated_except_maximum_power": bool(
+                    row["values_are_simulated_except_maximum_power"]
+                ),
+            }
+            for row in conn.execute("SELECT * FROM centrale ORDER BY id")
+        ]
 
-    return donnees_nucleaire
+        return {"plants": plants}
+    finally:
+        conn.close()
+
 
 def charger_production_nucleaire():
-    with open("data/data.json", "r", encoding="utf-8") as fichier:
-        production_nucleaire = json.load(fichier)
+    conn = _connect()
+    try:
+        region_rows = {r["id"]: r for r in conn.execute("SELECT * FROM region")}
 
-    return production_nucleaire
+        local_plant_ids = {}
+        for row in conn.execute("SELECT id, id_1 FROM centrale"):
+            local_plant_ids.setdefault(row["id_1"], []).append(row["id"])
+
+        external_entry_plant_ids = {}
+        for row in conn.execute("SELECT id, id_1 FROM accessible_via"):
+            external_entry_plant_ids.setdefault(row["id_1"], []).append(row["id"])
+
+        reactors_by_centrale = {}
+        for row in conn.execute("SELECT * FROM reacteur"):
+            reactors_by_centrale.setdefault(row["id"], []).append({
+                "id": row["id_reacteur"],
+                "name": row["name"],
+                "installed_power_mw": row["installed_power_mw"],
+                "minimum_design_power_mw": row["minimum_design_power_mw"],
+                "industrial_commissioning_date": row["industrial_commisionning_date"],
+                "status": row["status"],
+                "data_kind": row["data_kind"],
+            })
+
+        plants = []
+        for row in conn.execute("SELECT * FROM centrale ORDER BY id"):
+            region = region_rows.get(row["id_1"], {})
+            plants.append({
+                "id": row["id"],
+                "name": row["name"],
+                "location": {
+                    "latitude": row["latitude"],
+                    "longitude": row["longitude"],
+                    "commune": row["commune"],
+                    "department": row["departement"],
+                    "region_id": row["id_1"],
+                    "region_name": region["name"] if region else "",
+                },
+                "reactor_count": row["reactor_count"],
+                "installed_power_mw": row["installed_power_mw"],
+                "reactors": reactors_by_centrale.get(row["id"], []),
+                "simulation": {
+                    "available": bool(row["available"]),
+                    "initial_output_mw": row["initial_output_mw"],
+                    "initial_load_ratio": row["initial_load_ratio"],
+                    "soft_upper_bound_mw": row["soft_upper_bound_mw"],
+                    "soft_upper_bound_ratio": row["soft_upper_bound_ratio"],
+                    "initial_dispatchable_margin_mw": row["initial_dispatchable_margin_mw"],
+                    "max_ramp_up_mw_per_15_min": row["max_ramp_up_mw_15_min"],
+                    "technical_penalty": row["technical_penalty"],
+                    "values_are_simulated": bool(row["values_are_simulated"]),
+                },
+            })
+
+        regions = [
+            {
+                "id": row["id"],
+                "insee_code": row["insee_code"],
+                "name": row["name"],
+                "centroid": {"latitude": row["latitude"], "longitude": row["longitude"]},
+                "population_2023": row["population_2023"],
+                "annual_consumption_twh_2024": row["annual_consumption_twh2024"],
+                "average_consumption_mw_2024": row["annual_consumption_mw_2024"],
+                "illustrative_peak_consumption_mw": row["illustrative_peak_consumption_mw"],
+                "connected_to_continental_grid": bool(row["connected_to_continental_grid"]),
+                "local_plant_ids": local_plant_ids.get(row["id"], []),
+                "external_entry_plant_ids": external_entry_plant_ids.get(row["id"], []),
+                "data_notes": {
+                    "population": row["data_notes_population"],
+                    "consumption": row["data_notes_consumption"],
+                    "illustrative_peak": row["data_notes_illustrative_peak"],
+                },
+            }
+            for row in region_rows.values()
+        ]
+
+        plant_edges = [
+            {
+                "id": row["id"],
+                "from": row["id_1"],
+                "to": row["id_2"],
+                "bidirectional": bool(row["bidirectional"]),
+                "geodesic_distance_km": row["distance_km"],
+                "estimated_loss_percent": row["loss_percent"],
+                "max_transfer_mw": row["max_transfer_mw"],
+                "available": bool(row["available"]),
+                "topology_is_synthetic": bool(row["topology_is_synthetic"]),
+                "capacity_and_loss_are_simulated": bool(row["capacity_and_loss_are_simulated"]),
+            }
+            for row in conn.execute("SELECT * FROM liaison")
+        ]
+
+        overrides_by_scenario = {}
+        for row in conn.execute("SELECT * FROM scenario_override"):
+            overrides_by_scenario.setdefault(row["id_2"], {})[row["id_1"]] = {
+                "initial_output_mw": row["initial_output_mw"],
+                "soft_upper_bound_mw": row["soft_upper_bound_mw"],
+            }
+
+        example_scenarios = [
+            {
+                "id": row["id"],
+                "description": row["description"],
+                "expected_result": row["expected_result"],
+                "region_id": row["id_1"],
+                "additional_demand_mw": row["additionnal_demand_mw"],
+                "plant_overrides": overrides_by_scenario.get(row["id"], {}),
+            }
+            for row in conn.execute("SELECT * FROM scenario")
+        ]
+
+        # metadata / simulation_parameters : réglages statiques du JSON
+        # d'origine, non repris dans le schéma relationnel (mcd_analytique.sql
+        # ne prévoit pas de table pour ces clés).
+        return {
+            "metadata": {},
+            "simulation_parameters": {},
+            "plants": plants,
+            "regions": regions,
+            "plant_edges": plant_edges,
+            "example_scenarios": example_scenarios,
+        }
+    finally:
+        conn.close()
 
 
 # ---------------------------------------------------------------------------
