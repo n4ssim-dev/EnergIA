@@ -11,8 +11,12 @@ from mcp.server.fastmcp import FastMCP
 from routes.api import get_regions,get_centrales
 
 
-mcp = FastMCP("EnergIA")
-
+#mcp = FastMCP("EnergIA")
+mcp = FastMCP(
+    "EnergIA",
+    host="0.0.0.0",
+    port=8000,
+)
 
 @mcp.tool()
 def get_regions_mcp() -> dict:
