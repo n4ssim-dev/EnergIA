@@ -1,11 +1,81 @@
 
-const express = require("express");
-const router = express.Router();
+const express = require('express');
+const axios = require('axios');
 
-const {
- liste_regions
-} = require("../fastapi/routes/dijkstra");
-const axios = require("axios");
+const app = express();
+
+app.use(express.json());
+
+app.post('/normaliser', async (req, res) => {
+  const { question } = req.body;
+
+  if (!question) {
+    return res.status(400).json({
+      error: 'Question manquante'
+    });
+  }
+
+  const prompt = `
+Tu es le module de normalisation de EnergIA.
+
+Transforme la question utilisateur en JSON.
+
+Actions possibles :
+- liste_regions
+- liste_centrales
+- etat_centrale
+- consommation_region
+- production_region
+- simulation
+
+Format attendu :
+{
+  "action": "...",
+  "region": null,
+  "centrale": null,
+  "heure": null
+}
+
+Question :
+${question}
+
+Réponds uniquement avec le JSON.
+`;
+
+  try {
+    const response = await axios.post(
+      'http://langage:11434/api/generate',
+      {
+        model: 'qwen2.5:7b',
+        prompt: prompt,
+        format: 'json',
+        stream: false
+      }
+    );
+
+    const resultat = JSON.parse(
+      response.data.response
+    );
+
+    res.json(resultat);
+
+  } catch (error) {
+    console.error(error);
+
+    res.status(503).json({
+      error: 'Ollama indisponible'
+    });
+  }
+});
+
+app.listen(3001, () => {
+  console.log('Service Ollama lancé sur le port 3001');
+});
+
+
+
+
+
 
 // Routes pour interroger l'assistant
 app.post('/assistant', async (req, res) => {
