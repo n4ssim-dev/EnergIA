@@ -19,14 +19,14 @@ async def main():
             for tool in tools.tools:
                 print(f"- {tool.name}")
 
-            get_regions_mcp = await session.call_tool("get_regions_mcp", {})
-            get_centrales_mcp = await session.call_tool("get_centrales_mcp", {})
+            # get_regions_mcp = await session.call_tool("get_regions_mcp", {})
+            # get_centrales_mcp = await session.call_tool("get_centrales_mcp", {})
 
-            print("\nRésultat de get_regions_mcp() :")
-            print(get_regions_mcp)
+            # print("\nRésultat de get_regions_mcp() :")
+            # print(get_regions_mcp)
             
-            print("\nRésultat de get_centrales_mcp() :")
-            print(get_centrales_mcp)
+            # print("\nRésultat de get_centrales_mcp() :")
+            # print(get_centrales_mcp)
 
 
 if __name__ == "__main__":
