@@ -159,27 +159,13 @@ def repartir_demande(
             plant_id,
             candidat["current_output_mw"]
         )
-        
-        soft_upper_bound_mw = candidat["soft_upper_bound_mw"]
-        max_ramp_up_mw_per_15_min = candidat["max_ramp_up_mw_per_15_min"]
 
-        donnees_nucleaires = charger_param_temps_nucleaire()
-        puissance_precedente = calcul_puissance_precedente(donnees_nucleaires)
-        available_power = calcul_marge_reelle_disponible(puissance_precedente,etat_centrales)
-        # available_power = calcul_puissanceDispo(
-        #     soft_upper_bound_mw,
-        #     current_output_mw,
-        #     max_ramp_up_mw_per_15_min
+        # Marge réellement mobilisable en tenant compte des contraintes
+        # techniques de la centrale (vitesse de rampe montée/descente,
+        # bornes min/max réelles), plutôt que du seul plafond souple.
+        centrale = candidat["centrale"]
+        available_power = calcul_marge_reelle_disponible(current_output_mw, centrale)
 
-        # )
-        # print(
-        # "----------------------------CENTRALE----------------------------------",
-        # plant_id,
-        # "current =", current_output_mw,
-        # "max =", candidat["soft_upper_bound_mw"],
-        # "disponible =", available_power,
-        # "demande restante =", demand_left
-        # )
         if available_power <= 0:
             continue
 

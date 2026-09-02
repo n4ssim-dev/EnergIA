@@ -186,7 +186,8 @@ def run_simulation(region: str, augmentation_mw: float, etat_centrales: dict[str
                 "soft_upper_bound_mw": central.soft_upper_bound_mw,
                 #"initial_output_mw": central.initial_output_mw,
                 "current_output_mw": current_output_mw,
-                "max_ramp_up_mw_per_15_min" : central.max_ramp_up_mw_per_15_min
+                "max_ramp_up_mw_per_15_min" : central.max_ramp_up_mw_per_15_min,
+                "centrale": central,
 
             }
         )
@@ -224,7 +225,8 @@ def run_simulation(region: str, augmentation_mw: float, etat_centrales: dict[str
                     "soft_upper_bound_mw": central.soft_upper_bound_mw,
                     #"initial_output_mw": central.initial_output_mw,
                     "current_output_mw": current_output_mw,
-                    "max_ramp_up_mw_per_15_min" : central.max_ramp_up_mw_per_15_min
+                    "max_ramp_up_mw_per_15_min" : central.max_ramp_up_mw_per_15_min,
+                    "centrale": central,
 
                 }
             )
@@ -265,7 +267,8 @@ def run_simulation(region: str, augmentation_mw: float, etat_centrales: dict[str
                     "soft_upper_bound_mw": central.soft_upper_bound_mw,
                     #"initial_output_mw": central.initial_output_mw,
                     "current_output_mw": current_output_mw,
-                    "max_ramp_up_mw_per_15_min" : central.max_ramp_up_mw_per_15_min
+                    "max_ramp_up_mw_per_15_min" : central.max_ramp_up_mw_per_15_min,
+                    "centrale": central,
 
                 }
             )
@@ -540,8 +543,9 @@ def simulation_complete():
                     puissance_precedente,
                 "soft_upper_bound_mw":
                     centrale_reseau["simulation"]["soft_upper_bound_mw"],
-                "max_ramp_up_mw_per_15_min" : 
-                rampUp
+                "max_ramp_up_mw_per_15_min" :
+                rampUp,
+                "centrale": centrale_temporelle,
         })
 
 # ---------------------------------------------------------
