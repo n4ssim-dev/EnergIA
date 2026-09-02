@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends
 from .auth import check_password
 
 DATA_DIR = Path(__file__).parent.parent / "data"
-DB_PATH = DATA_DIR / "energia.db"
+DB_PATH = DATA_DIR / "analytics.db"
 SCHEMA_PATH = DATA_DIR / "mcd_analytique.sql"
 
 FILIERES = {

@@ -45,6 +45,7 @@ fastapi/.pytest_cache/
 # Ignorer tous les fichiers pycache
 __pycache__/
 
+<<<<<<< HEAD
 
 # ================================================
 
@@ -114,3 +115,14 @@ FrontEnergia/Thumbs.db
 # FrontEnergia
 
 # ==================================================
+=======
+# -----------------------------
+# Ollama
+# -----------------------------
+
+# Données et modèles téléchargés par Ollama
+ollama_data/
+
+# Modèles locaux éventuels
+*.gguf
+>>>>>>> dev
