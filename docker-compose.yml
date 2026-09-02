@@ -32,3 +32,5 @@ services:
             - driver: nvidia
               count: all
               capabilities: [gpu]
+
+# modèle chargement : docker exec -it energia_ollama ollama pull qwen2.5:7b
