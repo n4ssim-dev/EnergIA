@@ -19,6 +19,9 @@ mcp = FastMCP(
 )
 
 @mcp.tool()
+def post
+
+@mcp.tool()
 def get_regions_mcp() -> dict:
     """
     Retourne la liste des régions disponibles dans EnergIA.
