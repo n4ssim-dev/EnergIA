@@ -688,7 +688,7 @@ def calcul_marge_reelle_disponible(puissance_precedente,centrale):
 
     puissance_atteignable = puissance_reelle(puissance_precedente,puissance_souhaitee,centrale)
 
-    marge_reelle = ( puissance_atteignable - puissance_precedente)
+    marge_reelle = (puissance_atteignable - puissance_precedente)
     
     return max(marge_reelle, 0)
 
