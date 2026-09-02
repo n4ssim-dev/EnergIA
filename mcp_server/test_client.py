@@ -5,7 +5,7 @@ from mcp.client.streamable_http import streamablehttp_client
 
 
 async def main():
-    url = "http://127.0.0.1:8000/mcp"
+    url = "http://127.0.0.1:8002/mcp"
 
     async with streamablehttp_client(url) as streams:
         read_stream, write_stream, _ = streams
