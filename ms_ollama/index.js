@@ -8,8 +8,7 @@ const {
 const axios = require("axios");
 
 // Routes pour interroger l'assistant
-app.post('/assistant')
-const getAssistant = async (req, res) => {
+app.post('/assistant', async (req, res) => {
   let { question } = req.body;
 
   if (!question || typeof question !== "string") {
@@ -98,7 +97,14 @@ Tu es l'assistant d'EnergIA.
       message: "Erreur lors de l'appel à l'assistant",
       erreur: err.response?.data || err.message,
     });
-  }
+  } 
+  catch (err) {
+    console.error(
+      "Erreur assistant :",
+      err.response?.data || err.message
+    );
+});
+
 // };
 
 
