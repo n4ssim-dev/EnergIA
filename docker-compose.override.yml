@@ -26,3 +26,16 @@ services:
     volumes:
       - ./gateway:/app
       - /app/node_modules
+  
+  mcp-fastapi:
+    container_name: energia-mcp-fastapi
+    build:
+      context: .
+      dockerfile: mcp_fastapi/Dockerfile
+    ports:
+      - "8003:8003"
+    env_file:
+      - ./mcp_fastapi/.env
+    volumes:
+      - ./mcp_fastapi:/app
+
