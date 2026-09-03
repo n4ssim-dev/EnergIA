@@ -43,7 +43,19 @@ services:
       PORT: 8002
     ports:
       - "8002:8002"
-    container_name: energia-mcp 
+    container_name: energia-mcp
     env_file:
       - ./mcp_server/.env
+    restart: unless-stopped
+
+  mcp-fastapi:
+    build:
+      context: .
+      dockerfile: mcp_fastapi/Dockerfile
+    environment:
+      HOST: 0.0.0.0
+      PORT: 8003
+    ports:
+      - "8003:8003"
+    container_name: energia-mcp-fastapi
     restart: unless-stopped
