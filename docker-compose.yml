@@ -34,6 +34,19 @@ services:
               capabilities: [gpu]
 # modèle chargement : docker exec -it energia_ollama ollama pull qwen2.5:7b
 
+  mcp-server:
+    build:
+      context: .
+      dockerfile: mcp_server/Dockerfile
+    environment:
+      HOST: 0.0.0.0
+      PORT: 8002
+    ports:
+      - "8002:8002"
+    container_name: energia-mcp
+    env_file:
+      - ./mcp_server/.env
+    restart: unless-stopped
 
   mcp-fastapi:
     build:
