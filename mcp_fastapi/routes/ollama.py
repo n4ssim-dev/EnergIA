@@ -5,7 +5,7 @@ from fastapi import APIRouter, HTTPException
 
 router = APIRouter()
 
-OLLAMA_URL = "http://localhost:11434"
+OLLAMA_URL = "http://langage:11434"
 
 OLLAMA_MODEL = "qwen2.5:7b"
 
@@ -44,6 +44,27 @@ async def normaliser_question(question: str):
             detail="Question manquante"
         )
 
+    # 2. Récupération dynamique des routes
+    async with httpx.AsyncClient() as client:
+        routes_response = await client.get(
+            "http://mcp-fastapi:8002/routes",
+            timeout=30
+        )
+
+        routes_response.raise_for_status()
+        routes_data = routes_response.json()
+
+    # 3. Construction du texte contenant les routes
+    routes_prompt = ""
+
+    for route in routes_data["routes"]:
+        routes_prompt += f"""
+        - Route : {route["methode"]} {route["chemin"]}
+        Description : {route["description"]}
+        ID : {route["id"]}
+        """
+
+
     # 2. Prompt envoyé à Ollama
     prompt = f"""
     Tu es le module d'interprétation des requêtes utilisateur
@@ -64,52 +85,7 @@ async def normaliser_question(question: str):
 
     ROUTES DISPONIBLES
 
-    1. GET /regions
-    Action : liste_regions
-    Description : retourne la liste des régions.
-    Paramètres : aucun.
-
-
-    2. GET /centrales
-    Action : liste_centrales
-    Description : retourne la liste des centrales.
-    Paramètres : aucun.
-
-
-    3. GET /centrale
-    Action : etat_centrale
-    Description : retourne les informations concernant une centrale.
-
-    Paramètres :
-    - centrale : nom de la centrale
-
-
-    4. GET /consommation
-    Action : consommation_region
-    Description : retourne la consommation électrique d'une région.
-
-    Paramètres :
-    - region : nom de la région
-    - heure : heure demandée
-
-
-    5. GET /production
-    Action : production_region
-    Description : retourne la production électrique d'une région.
-
-    Paramètres :
-    - region : nom de la région
-    - heure : heure demandée
-
-
-    6. GET /simulation
-    Action : simulation
-    Description : lance une simulation d'augmentation de consommation.
-
-    Paramètres :
-    - region : nom de la région
-    - augmentation_mw : augmentation demandée en MW
-
+    {routes_prompt}
 
     NORMALISATION
 
@@ -151,16 +127,20 @@ async def normaliser_question(question: str):
 
     FORMAT OBLIGATOIRE
 
-    {{
-        "action": "nom_action",
-        "route": "/nom_route",
-        "method": "GET",
-        "params": {{}}
-    }}
+{{
+    "route_id": null,
+    "route": "/nom_route",
+    "method": "GET",
+    "params": {{}}
+}}
 
 
     RÈGLES STRICTES
 
+    - "route_id" doit correspondre exactement à l'identifiant de la route choisie dans ROUTES DISPONIBLES.
+    - "route" doit correspondre exactement au chemin de cette même route.
+    - "method" doit correspondre exactement à sa méthode HTTP.
+    - N'invente jamais de route_id, de route ou de méthode.
     - Réponds uniquement avec du JSON valide.
     - Aucun texte avant ou après le JSON.
     - N'invente jamais de route.
@@ -173,30 +153,60 @@ async def normaliser_question(question: str):
     Si aucune route ne correspond :
 
     {{
-        "action": "inconnue",
+        "route_id": null,
         "route": null,
         "method": null,
         "params": {{}}
     }}
 
 
-    EXEMPLE
-    Question :
-    "Fais une simulation de 500 MW supplémentaires en Occitanie"
+    EXEMPLE 1
+
+    Question utilisateur :
+    "Liste-moi toutes les régions disponibles."
 
     Réponse :
 
     {{
-        "action": "simulation",
-        "route": "/simulation",
+        "route_id": null,
+        "route": "/regions",
+        "method": "GET",
+        "params": {{}}
+    }}
+
+    EXEMPLE 2
+
+    Question utilisateur :
+    "Donne-moi les informations de la centrale numéro 12."
+
+    Réponse :
+
+    {{
+        "route_id": null,
+        "route": "/dijkstra/centrales/{{centrale_id}}",
         "method": "GET",
         "params": {{
-            "region": "Occitanie",
-            "augmentation_mw": 500
+            "centrale_id": 12
         }}
     }}
 
+    EXEMPLE 3
 
+    Question utilisateur :
+    "Quel est le plus court chemin entre la centrale de Golfech et celle de Tricastin ?"
+
+    Réponse :
+
+    {{
+        "route_id": null,
+        "route": "/dijkstra/shortest-path",
+        "method": "GET",
+        "params": {{
+            "source": "Golfech",
+            "destination": "Tricastin"
+        }}
+    }}
+    
     QUESTION UTILISATEUR
 
     {question}
