@@ -8,4 +8,8 @@ router.get("/regions", apiController.getRegions);
 router.get("/liaisons", apiController.getLiaisons);
 router.get("/simulation", apiController.getSimulation);
 
+
+router.get("/etat-centrale", apiController.getEtatCentrale);
+
+
 module.exports = router;
