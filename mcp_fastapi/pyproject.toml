@@ -13,9 +13,5 @@ dependencies = [
     "starlette>=1.6.0",
 ]
 
-[project.scripts]
-mcp-fastapi = "mcp_fastapi:main"
-
-[build-system]
-requires = ["uv_build>=0.12.7,<0.13.0"]
-build-backend = "uv_build"
+[tool.uv]
+package = false
