@@ -173,9 +173,10 @@ Tu es l'assistant d'EnergIA.
       "Erreur assistant :",
       err.response?.data || err.message
     );
-});
+  }
 
-// };
+
+}); 
 
 
 // app.post("/alimentation", async (req, res) => {
