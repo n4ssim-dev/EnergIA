@@ -9,6 +9,8 @@ OLLAMA_URL = "http://langage:11434"
 
 OLLAMA_MODEL = "qwen2.5:7b"
 
+METIER_URL = "http://python-service:8000" 
+
 
 # --------------------------------------------------
 # Données de normalisation
@@ -246,6 +248,37 @@ async def normaliser_question(question: str):
 
     texte_json = ollama_data.get("response")
 
+    
+    texte_json['method']
+
+
+    try:
+        async with httpx.AsyncClient() as client:
+
+            if texte_json['method'] == "GET" :
+                response = await client.get(
+                        f"{METIER_URL}{texte_json['route']}",
+
+                        timeout=60
+                    )
+            
+            elif texte_json['method'] == "POST" :
+                response = await client.post(
+                        f"{METIER_URL}{texte_json['route']}",
+
+                        timeout=60
+                    )
+            
+        response.raise_for_status()
+    
+    except httpx.HTTPError as erreur:
+
+        raise HTTPException(
+            status_code=502,
+            detail=f"Erreur lors de l'appel à Ollama : {erreur}"
+        )
+   
+
     if not texte_json:
 
         raise HTTPException(
@@ -268,36 +301,36 @@ async def normaliser_question(question: str):
             detail="La réponse d'Ollama n'est pas un JSON valide"
         )
 
-    # --------------------------------------------------
-    # 6. Récupération des paramètres
-    # --------------------------------------------------
+    # # --------------------------------------------------
+    # # 6. Récupération des paramètres
+    # # --------------------------------------------------
 
-    params = resultat.get("params", {})
+    # params = resultat.get("params", {})
 
-    # --------------------------------------------------
-    # 7. Normalisation déterministe de la région
-    # --------------------------------------------------
+    # # --------------------------------------------------
+    # # 7. Normalisation déterministe de la région
+    # # --------------------------------------------------
 
-    region = params.get("region")
+    # region = params.get("region")
 
-    if region is not None:
+    # if region is not None:
 
-        region_id = REGIONS.get(region)
+    #     region_id = REGIONS.get(region)
 
-        if region_id is None:
+    #     if region_id is None:
 
-            raise HTTPException(
-                status_code=400,
-                detail=f"Région inconnue : {region}"
-            )
+    #         raise HTTPException(
+    #             status_code=400,
+    #             detail=f"Région inconnue : {region}"
+    #         )
 
-        params["region"] = region_id
+    #     params["region"] = region_id
 
-    # --------------------------------------------------
-    # 8. Remise des paramètres normalisés
-    # --------------------------------------------------
+    # # --------------------------------------------------
+    # # 8. Remise des paramètres normalisés
+    # # --------------------------------------------------
 
-    resultat["params"] = params
+    # resultat["params"] = params
 
     # --------------------------------------------------
     # 9. Retour au MCP
