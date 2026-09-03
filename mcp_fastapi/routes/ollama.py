@@ -47,7 +47,7 @@ async def normaliser_question(question: str):
     # 2. Récupération dynamique des routes
     async with httpx.AsyncClient() as client:
         routes_response = await client.get(
-            "http://mcp-fastapi:8002/routes",
+            "http://mcp-fastapi:8003/routes",
             timeout=30
         )
 
