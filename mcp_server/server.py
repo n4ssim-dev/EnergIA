@@ -204,7 +204,7 @@ async def normaliser_question(question: str):
     }}
 
 
-    EXEMPLE
+    EXEMPLE 1
     Question :
     "Fais une simulation de 500 MW supplémentaires en Occitanie"
 
@@ -220,6 +220,37 @@ async def normaliser_question(question: str):
         }}
     }}
 
+    EXEMPLE 1
+        Question :
+        "Fais une simulation de 500 MW supplémentaires en Occitanie"
+    
+        Réponse :
+    
+        {{
+            "action": "simulation",
+            "route": "/simulation",
+            "method": "GET",
+            "params": {{
+                "region": "Occitanie",
+                "augmentation_mw": 500
+            }}
+        }}
+    
+    EXEMPLE 1
+        Question :
+        "Fais une simulation de 500 MW supplémentaires en Occitanie"
+        
+        Réponse :
+        
+        {{
+            "action": "simulation",
+            "route": "/simulation",
+            "method": "GET",
+            "params": {{
+                "region": "Occitanie",
+                "augmentation_mw": 500
+            }}
+        }}
 
     QUESTION UTILISATEUR
 
