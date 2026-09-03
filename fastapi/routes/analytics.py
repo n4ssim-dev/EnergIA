@@ -48,7 +48,7 @@ def find_region(conn, region_id: str):
     ).fetchone()
 
 
-@router.get("/centrales/{centrale_id}/etat")
+@router.get("/centrales/{centrale_id}/etat") 
 def etat_centrale(centrale_id: str):
     """État d'une centrale : disponibilité, puissance installée/actuelle,
     marge de manœuvre, réacteurs. La puissance maximale (installed_power_mw)
