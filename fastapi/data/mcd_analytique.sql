@@ -170,3 +170,25 @@ CREATE TABLE accessible_via(
    FOREIGN KEY(id) REFERENCES centrale(id),
    FOREIGN KEY(id_1) REFERENCES region(id)
 );
+
+CREATE TABLE route(
+   id INT,
+   chemin VARCHAR(150),
+   methode VARCHAR(10),
+   fichier_source VARCHAR(50),
+   description VARCHAR(250),
+   authentification_requise LOGICAL,
+   PRIMARY KEY(id)
+);
+
+CREATE TABLE parametre_route(
+   id INT,
+   nom VARCHAR(50),
+   emplacement VARCHAR(10),
+   type VARCHAR(30),
+   requis LOGICAL,
+   valeur_defaut VARCHAR(50),
+   id_route INT NOT NULL,
+   PRIMARY KEY(id),
+   FOREIGN KEY(id_route) REFERENCES route(id)
+);
