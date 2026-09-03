@@ -1,4 +1,4 @@
-## Développement d'une plateforme d'aide à la décision pour le pilotage d'un parc de production électrique
+# Développement d'une plateforme d'aide à la décision pour le pilotage d'un parc de production électrique
 
 ![Docker](https://img.shields.io/badge/Docker-2496ED?style=for-the-badge&logo=docker&logoColor=white)
 ![Node.js](https://img.shields.io/badge/Node.js-339933?style=for-the-badge&logo=node.js&logoColor=white)
@@ -312,11 +312,11 @@ Activer l’environnement virtuel :
 .\.venv\Scripts\Activate.ps1
 ```
 Se placer dans le dossier fastapi :
-```
+```powershell
 cd fastapi
 ```
 Lancer l'API
-```
+```powershell
 fastapi run .\main.py
 ```
 Ouvrir le Swagger avec :
@@ -329,7 +329,7 @@ La simulation utilise une journée découpée en **96 pas de 15 minutes**.
 
 Exemple de timestamps :
 
-```
+```json
 {
   "timestamps": [
     "00:00",
@@ -342,7 +342,7 @@ Exemple de timestamps :
 Chaque région possède une liste de 96 valeurs correspondant aux 96 quarts d’heure de la journée.
 
 Exemple pour la consommation :
-```
+```json
 {
   "id": "occitanie",
   "consumption_mw": [
@@ -353,7 +353,7 @@ Exemple pour la consommation :
 }
 ```
 Le même principe est utilisé pour la production **solaire** et **éolienne** :
-```
+```json
 {
   "id": "occitanie",
   "production_mw": {
@@ -373,7 +373,7 @@ Le même principe est utilisé pour la production **solaire** et **éolienne** :
 Les valeurs situées au même index correspondent au même pas de temps.
 
 Par exemple :
-```
+```text
 index 0  → 00:00
 index 1  → 00:15
 index 2  → 00:30
@@ -387,14 +387,14 @@ La simulation est dite stateful : l’état calculé à un instant donné est ut
 Pour le premier pas de temps, la puissance précédente d’une centrale correspond à sa puissance à 23:45 la veille.
 
 Exemple :
-```
+```json
 {
   "plant_id": "belleville",
   "initial_output_mw_at_23_45_previous_day": 1493
 }
 ```
 Ensuite :
-```
+```text
 - 23:45 veille
     
 -> calcul de 00:00
@@ -423,7 +423,7 @@ Chaque centrale dispose donc :
 - d’une vitesse maximale de descente sur 15 minutes.
 
 Exemple :
-```
+```json
 {
   "plant_id": "belleville",
   "minimum_operating_power_mw": 520,
@@ -451,11 +451,11 @@ La puissance finale doit également rester comprise entre les limites minimale e
 La production solaire et éolienne est considérée comme non pilotable.
 
 Pour chaque région et chaque quart d’heure :
-```
+```text
 production hors nucléaire = production solaire + production éolienne
 ```
 Exemple :
-```
+```text
 solaire = 400 MW
 éolien = 600 MW
 
@@ -466,7 +466,7 @@ production hors nucléaire = 1000 MW
 Dans le moteur, un premier besoin restant est calculé après prise en compte des productions solaire et éolienne.
 
 La formule utilisée est :
-```
+```text
 besoin résiduel = consommation - production solaire - production éolienne
 
 ou :
@@ -476,7 +476,7 @@ besoin résiduel = consommation - production hors nucléaire
 Le calcul est effectué pour chaque région et chacun des 96 pas de temps.
 
 Exemple :
-```
+```text
 consommation = 3000 MW
 solaire = 400 MW
 éolien = 600 MW
@@ -487,7 +487,7 @@ besoin résiduel = 3000 - 400 - 600
 Ce besoin doit ensuite être couvert par le nucléaire.
 
 Après prise en compte de la production nucléaire réellement disponible, un déficit final peut être calculé :
-```
+```text
 déficit final = besoin résiduel - production nucléaire réellement fournie
 ```
 Si le résultat est supérieur à 0, cette puissance n’a pas pu être couverte par le moteur et doit être considérée comme un besoin complémentaire d’approvisionnement.
@@ -660,3 +660,354 @@ Calcul du déficit éventuel
 Contrôle de la réserve nucléaire
 ```
 La simulation est répétée sur les 96 quarts d’heure de la journée.
+
+# MCP et interprétation des requêtes en langage naturel
+
+EnergIA intègre désormais un service MCP permettant de transformer une question utilisateur formulée en langage naturel en une requête structurée exploitable par les différentes API du projet.
+
+## Objectif
+
+Le MCP joue le rôle d'intermédiaire entre l'utilisateur et les microservices EnergIA.
+
+Le fonctionnement général est le suivant :
+
+1. l'utilisateur formule une question en langage naturel ;
+2. la route `/normaliser` transmet cette question au modèle Ollama ;
+3. Ollama identifie la route EnergIA correspondant à l'intention de l'utilisateur ;
+4. les paramètres nécessaires sont extraits et normalisés ;
+5. une structure JSON standardisée est renvoyée ;
+6. cette structure peut ensuite être utilisée par le MCP pour appeler la route FastAPI correspondante.
+
+Exemple de question :
+
+```text
+Simule une augmentation de 500 MW en Occitanie.
+```
+
+Exemple de résultat normalisé :
+
+```json
+{
+    "route_id": 4,
+    "route": "/simulation",
+    "method": "GET",
+    "params": {
+        "region": "Occitanie",
+        "augmentation_mw": 500
+    }
+}
+```
+
+---
+
+## Route de normalisation
+
+### GET `/normaliser`
+
+Permet d'interpréter une question en langage naturel.
+
+Paramètre :
+
+* `question` : question formulée par l'utilisateur.
+
+Exemple :
+
+```http
+GET /normaliser?question=Liste-moi les régions
+```
+
+La route ne répond pas directement à la question métier.
+
+Elle retourne une instruction structurée permettant au MCP d'identifier la route à appeler ainsi que ses paramètres.
+
+Format de sortie :
+
+```json
+{
+    "route_id": 2,
+    "route": "/regions",
+    "method": "GET",
+    "params": {}
+}
+```
+
+---
+
+## Catalogue dynamique des routes
+
+Les routes disponibles dans EnergIA sont enregistrées dans la base `analytics.db`.
+
+Le MCP utilise ce catalogue afin d'éviter de maintenir manuellement une liste de routes dans le prompt Ollama.
+
+Les informations disponibles pour chaque route comprennent notamment :
+
+* l'identifiant de la route ;
+* le chemin ;
+* la méthode HTTP ;
+* le fichier source ;
+* la description ;
+* la nécessité ou non d'une authentification.
+
+### GET `/routes`
+
+Retourne le catalogue des routes EnergIA.
+
+Filtres optionnels :
+
+* `methode`
+* `fichier_source`
+
+### GET `/routes/search`
+
+Recherche une route à partir d'une partie de son chemin.
+
+Paramètre obligatoire :
+
+* `chemin`
+
+### GET `/routes/{route_id}`
+
+Retourne les informations détaillées d'une route ainsi que ses paramètres.
+
+### GET `/routes/{route_id}/parametres`
+
+Retourne les paramètres associés à une route donnée.
+
+Les paramètres enregistrés dans le catalogue précisent notamment :
+
+* leur nom ;
+* leur emplacement ;
+* leur type ;
+* s'ils sont obligatoires ;
+* leur éventuelle valeur par défaut.
+
+---
+
+## Ollama
+
+Ollama est utilisé uniquement pour interpréter la demande utilisateur.
+
+Le modèle ne doit pas exécuter la logique métier EnergIA et ne doit pas répondre directement à la question.
+
+Son rôle est de :
+
+* comprendre l'intention de l'utilisateur ;
+* sélectionner une route existante ;
+* extraire les paramètres ;
+* normaliser certaines valeurs ;
+* retourner uniquement une structure JSON valide.
+
+Le MCP communique avec le serveur Ollama via son API :
+
+```text
+POST /api/generate
+```
+
+Dans l'environnement Docker, le service Ollama est appelé par son nom de service Docker et non avec `localhost`.
+
+Exemple :
+
+```text
+http://langage:11434/api/generate
+```
+
+Le nom exact dépend du nom du service déclaré dans `compose.yaml`.
+
+---
+
+## Normalisation des paramètres
+
+Certaines données extraites de la question utilisateur doivent respecter un format homogène avant d'être utilisées par les API.
+
+### Régions
+
+Les variantes de casse ou d'écriture doivent être ramenées au nom normalisé.
+
+Exemples :
+
+```text
+occitanie → Occitanie
+OCCITANIE → Occitanie
+hauts de france → Hauts-de-France
+```
+
+La correspondance entre le nom d'une région et son identifiant métier peut ensuite être effectuée côté Python.
+
+### Heures
+
+Les heures sont normalisées au format :
+
+```text
+HH:MM
+```
+
+Exemples :
+
+```text
+8h → 08:00
+8h30 → 08:30
+18 heures → 18:00
+```
+
+### Puissances
+
+Les valeurs de puissance sont exprimées en MW.
+
+Exemples :
+
+```text
+500 MW → 500
+1 200 MW → 1200
+1,5 GW → 1500
+```
+
+Les valeurs sont renvoyées sous forme numérique et sans unité dans le JSON.
+
+---
+
+## Gestion des paramètres manquants
+
+Ollama ne doit jamais inventer une information absente de la question utilisateur.
+
+Lorsqu'un paramètre obligatoire n'est pas fourni, sa valeur est positionnée à `null`.
+
+Exemple :
+
+```json
+{
+    "route": "/simulation",
+    "method": "GET",
+    "params": {
+        "region": "Occitanie",
+        "augmentation_mw": null
+    }
+}
+```
+
+Les paramètres obligatoires peuvent ensuite être contrôlés à partir des informations enregistrées dans la table `parametre_route`.
+
+Une requête incomplète ne doit pas être transmise à la logique métier avant validation.
+
+---
+
+## Séparation des responsabilités
+
+Le fonctionnement du MCP est volontairement séparé en plusieurs étapes.
+
+```text
+Utilisateur
+    ->
+Question en langage naturel
+   ->
+Route /normaliser
+   ->
+Catalogue des routes EnergIA
+    ->
+Ollama
+    ->
+JSON format unifié
+    ->
+Validation des paramètres
+    ->
+MCP
+    ->
+Route FastAPI correspondante
+    ->
+Moteur EnergIA
+```
+
+Ollama assure donc l'interprétation du langage naturel.
+
+Le code Python assure les contrôles déterministes, la validation des paramètres et les éventuelles conversions.
+
+Le MCP utilise ensuite le résultat pour effectuer l'appel réel vers le microservice concerné.
+
+---
+
+## Routes EnergIA disponibles
+
+Le catalogue contient les routes suivantes :
+
+```text
+GET  /centrales
+GET  /regions
+GET  /liaisons
+GET  /simulation
+
+POST /db/ingest
+
+GET  /dijkstra/load-datastore
+GET  /dijkstra/rapport
+GET  /dijkstra/shortest-path
+GET  /dijkstra/centrales
+GET  /dijkstra/centrales/{centrale_id}
+GET  /dijkstra/regions
+GET /dijkstra/regions/{region_id}	
+GET /dijkstra/liaisons	
+GET	/dijkstra/anomalies	
+GET	/dijkstra/calcule	
+
+POST	/dijkstra/simulation-regions
+
+GET	/dijkstra/besoins-residuels	
+GET	/dijkstra/simulation-complete	
+GET	/analytics/centrales/{centrale_id}
+GET	/analytics/centrales/disponibles	
+GET	/analytics/regions/{region_id}
+GET	/analytics/regions/consommation/max	
+GET	/analytics/regions/{region_id}
+```
+
+Le catalogue présent dans `analytics.db` constitue la source de référence pour les routes disponibles.
+
+---
+
+## Architecture Docker
+
+L'application est composée de plusieurs services exécutés dans des conteneurs distincts.
+
+Exemple simplifié :
+
+```text
+Utilisateur
+      ↓
+MCP FastAPI
+  ├── routes.py
+  └── ollama.py
+      ↓
+Ollama
+      ↓
+API / moteur EnergIA
+  └── catalogue analytics.db
+```
+
+Lorsque deux services se trouvent dans des conteneurs différents du même réseau Docker Compose, ils communiquent avec le nom du service Docker.
+
+Exemple :
+
+```text
+http://langage:11434
+```
+
+`localhost` désigne uniquement le conteneur courant.
+
+---
+
+## Reconstruction de l'environnement Docker
+
+Après modification du fichier `compose.yaml`, les conteneurs peuvent être recréés avec :
+
+```powershell
+docker compose down --remove-orphans
+docker compose up --build
+```
+
+Pour forcer une reconstruction complète sans cache :
+
+```powershell
+docker compose build --no-cache
+docker compose up
+```
+
+L'option `-v` de `docker compose down` doit être utilisée avec précaution car elle supprime également les volumes persistants.
+
