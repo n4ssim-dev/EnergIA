@@ -23,7 +23,6 @@ mcp = FastMCP(
     port=8000,
 )
 
-
 @mcp.tool()
 def etat_centrale_mcp(centrale_id: str) -> dict:
     """
@@ -111,8 +110,6 @@ def situation_region_mcp(
         heure=heure,
         jour_relatif=jour_relatif,
     )
-
-
 
 if __name__ == "__main__":
     mcp.run(transport="streamable-http")
