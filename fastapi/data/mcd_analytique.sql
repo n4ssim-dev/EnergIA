@@ -192,3 +192,14 @@ CREATE TABLE parametre_route(
    PRIMARY KEY(id),
    FOREIGN KEY(id_route) REFERENCES route(id)
 );
+
+CREATE TABLE fait_production_regionale_historique (
+    id INTEGER PRIMARY KEY,
+    date_heure TEXT NOT NULL,
+    region_id INTEGER NOT NULL,
+    nucleaire_mw REAL,
+    eolien_mw REAL,
+    solaire_mw REAL,
+    source TEXT DEFAULT 'eco2mix',
+    FOREIGN KEY (region_id) REFERENCES region(id)
+);

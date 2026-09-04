@@ -2,16 +2,6 @@ import json
 import sqlite3
 import pandas as pd
 
-df = pd.read_csv(
-    "eco2mix-regional-tr.csv",
-    sep=";"
-)
-
-print(df.columns)
-print(df.head())
-
-
-
 from pathlib import Path
 
 from fastapi import APIRouter, Depends
@@ -21,10 +11,11 @@ from .auth import check_password
 DATA_DIR = Path(__file__).parent.parent / "data"
 DB_PATH = DATA_DIR / "analytics.db"
 SCHEMA_PATH = DATA_DIR / "mcd_analytique.sql"
+CSV_PRODUCTION_PATH = DATA_DIR / "eco2mix-regional-tr.csv"
 
 FILIERES = {
     "solar": "Solaire",
-    "wind": "Éolien",
+    "wind": "Éolien", 
 }
 
 # Catalogue statique des routes exposées par l'API (méthode, fichier source,
@@ -204,6 +195,7 @@ TABLES = [
     "liaison",
     "centrale",
     "fait_consommation",
+    "fait_production_regionale_historique",
     "fait_production_non_pilotable",
     "capacitee_instalee_non_pilotable",
     "dim_temps",
@@ -588,6 +580,7 @@ def run_ingestion():
         summary.update(ingest_production_non_pilotable(conn))
         summary.update(ingest_scenarios_phase3(conn))
         summary.update(ingest_routes(conn))
+        summary.update(ingest_eco2mix_historique(conn))
         conn.commit()
         return summary
     except Exception:
@@ -596,8 +589,77 @@ def run_ingestion():
     finally:
         conn.close()
 
-def 
 
+def ingest_eco2mix_historique(conn):
+    df = pd.read_csv(CSV_PRODUCTION_PATH, sep=";")
+
+    df["Date - Heure"] = pd.to_datetime(df["Date - Heure"], errors="coerce")
+
+    df = df.dropna(
+        subset=[
+            "Date - Heure",
+            "Code INSEE région"
+        ]
+    )
+
+    count = 0
+
+    for _, row in df.iterrows():
+
+        # 1. Récupérer le code INSEE venant du CSV
+        code_insee = str(int(row["Code INSEE région"]))
+
+        # 2. Chercher l'id interne correspondant dans la table region
+        region = conn.execute(
+            """
+            SELECT id
+            FROM region
+            WHERE insee_code = ?
+            """,
+            (code_insee,)
+        ).fetchone()
+
+        # 3. Si aucune région correspondante n'est trouvée, on ignore la ligne
+        if region is None:
+            print(
+                f"Région introuvable : {row['Région']} "
+                f"(code INSEE {code_insee})"
+            )
+            continue
+
+        # 4. Récupérer le véritable id utilisé comme clé étrangère
+        region_id = region[0]
+
+        count += 1
+
+        # 5. Insérer les données avec le bon region_id
+        conn.execute(
+            """
+            INSERT INTO fait_production_regionale_historique (
+                id,
+                date_heure,
+                region_id,
+                nucleaire_mw,
+                eolien_mw,
+                solaire_mw,
+                source
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                count,
+                row["Date - Heure"].isoformat(),
+                region_id,
+                row["Nucléaire (MW)"],
+                row["Eolien (MW)"],
+                row["Solaire (MW)"],
+                "eco2mix"
+            )
+        )
+
+    return {
+        "fait_production_regionale_historique": count
+    }
 
 router = APIRouter(prefix="/db", dependencies=[Depends(check_password)])
 
