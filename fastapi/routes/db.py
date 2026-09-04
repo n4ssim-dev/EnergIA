@@ -1,5 +1,17 @@
 import json
 import sqlite3
+import pandas as pd
+
+df = pd.read_csv(
+    "eco2mix-regional-tr.csv",
+    sep=";"
+)
+
+print(df.columns)
+print(df.head())
+
+
+
 from pathlib import Path
 
 from fastapi import APIRouter, Depends
@@ -583,6 +595,8 @@ def run_ingestion():
         raise
     finally:
         conn.close()
+
+def 
 
 
 router = APIRouter(prefix="/db", dependencies=[Depends(check_password)])
