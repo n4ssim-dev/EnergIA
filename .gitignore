@@ -124,4 +124,4 @@ ollama_data/
 # Modèles locaux éventuels
 *.gguf
 
-consommation-quotidienne-brute-regionale.json
+documentation/conso/consommation-quotidienne-brute-regionale.json
