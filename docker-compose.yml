@@ -20,18 +20,10 @@ services:
     image: ollama/ollama:0.9.2
     container_name: energia_ollama
     ports:
-      - "11434:11434"
+      - "11435:11434"
 
     volumes:
       - ./ollama_data:/root/.ollama
-
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: all
-              capabilities: [gpu]
 # modèle chargement : docker exec -it energia_ollama ollama pull qwen2.5:7b
 
   mcp-fastapi:

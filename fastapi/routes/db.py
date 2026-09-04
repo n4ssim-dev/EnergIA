@@ -122,9 +122,19 @@ ROUTES_CATALOG = [
         "auth": True, "parametres": [],
     },
     {
-        "chemin": "/dijkstra/simulation-complete", "methode": "GET", "fichier_source": "dijkstra.py",
-        "description": "Simulation complète avec contraintes réelles (cas test Occitanie 00:00)",
-        "auth": True, "parametres": [],
+        "chemin": "/dijkstra/simulation-complete", "methode": "POST", "fichier_source": "dijkstra.py",
+        "description": "Simulation complète avec contraintes réelles sur l'ensemble des faits de consommation "
+        "(toutes régions, tous quarts d'heure), avec filtre facultatif par région et/ou heure",
+        "auth": True, "parametres": [
+            {
+                "nom": "region", "type": "string", "emplacement": "body",
+                "requis": False, "defaut": "null",
+            },
+            {
+                "nom": "heure", "type": "string", "emplacement": "body",
+                "requis": False, "defaut": "null",
+            },
+        ],
     },
     {
         "chemin": "/analytics/centrales/{centrale_id}/etat", "methode": "GET", "fichier_source": "analytics.py",

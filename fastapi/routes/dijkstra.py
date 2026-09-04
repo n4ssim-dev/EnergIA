@@ -45,6 +45,12 @@ class Perturbation(BaseModel):
     end: str
     deltaMw: float
 
+
+# filtre facultatif pour /simulation-complete
+class SimulationCompleteFiltre(BaseModel):
+    region: Optional[str] = None
+    heure: Optional[str] = None
+
 router = APIRouter(prefix="/dijkstra")
 
 @router.get("/load-datastore")
@@ -455,54 +461,18 @@ def get_besoins_residuels():
         "besoins_residuels": besoins_residuels
     }
 
-@router.get("/simulation-complete")
-def simulation_complete():
-
-# ---------------------------------------------------------
-# 1. CHARGEMENT DES DONNÉES
-# ---------------------------------------------------------
-    store = get_store()
-    donnees_consommation = charger_journee_reference()
-
-    donnees_non_pilotables = (charger_journee_reference_hors_nucleaire())
-
-    # data.json
-    production_nucleaire = charger_production_nucleaire()
-
-
-
-# ---------------------------------------------------------
-# 2. CALCUL DU BESOIN RÉSIDUEL
-# ---------------------------------------------------------
-
-    journee = parcourir_journee(donnees_consommation)
-    production_solaire = recuperer_donnees_solaires(donnees_non_pilotables)
-    production_eolien = recuperer_donnees_eolien(donnees_non_pilotables)
-    production_non_pilotable = production_hors_nucleaire(production_solaire,production_eolien)
-    besoins_residuels = calcul_besoins_residuels(journee,production_non_pilotable)
-
-# ---------------------------------------------------------
-# 3. TEST OCCITANIE À 00:00
-   # ---------------------------------------------------------
-
-    region_id = "occitanie"
-    index = 0
+def _simulation_complete_region_heure(
+    region_id, index, store, donnees_consommation, besoins_residuels, production_nucleaire
+):
+    """Calcule la répartition nucléaire réelle pour une région et un quart d'heure donnés."""
 
     demande_mw = besoins_residuels[region_id][index]
 
-# ---------------------------------------------------------
-# 4. RÉCUPÉRATION DE LA RÉGION
-# ---------------------------------------------------------
-
     region = next(
-            r
-            for r in production_nucleaire["regions"]
-            if r["id"] == region_id
+        r
+        for r in production_nucleaire["regions"]
+        if r["id"] == region_id
     )
-
-# ---------------------------------------------------------
-# 5. CENTRALES CANDIDATES
-# ---------------------------------------------------------
 
     candidats_ids = (
         region["local_plant_ids"]
@@ -510,12 +480,7 @@ def simulation_complete():
     )
 
     candidats = []
-
     etat_centrales = {}
-
-# ---------------------------------------------------------
-# 6. CONSTRUCTION DES CANDIDATS
-# ---------------------------------------------------------
 
     for plant_id in candidats_ids:
 
@@ -548,104 +513,139 @@ def simulation_complete():
                 "centrale": centrale_temporelle,
         })
 
-# ---------------------------------------------------------
-# 7. RÉPARTITION SOUHAITÉE DU BESOIN
-# ---------------------------------------------------------
+    # Répartition souhaitée du besoin
+    resultat_repartition = repartir_demande(demande_mw, candidats, etat_centrales.copy())
 
-        resultat_repartition = repartir_demande(demande_mw, candidats, etat_centrales.copy())
+    # Application des contraintes réelles
+    allocations_reelles = []
+    total_nucleaire_reellement_fourni = 0
 
-# ---------------------------------------------------------
-# 8. APPLICATION DES CONTRAINTES RÉELLES
-# ---------------------------------------------------------
+    for allocation in resultat_repartition["allocation"]:
 
-        allocations_reelles = []
+        plant_id = allocation["plant_id"]
+        allocation_souhaitee = allocation["allocated_mw"]
 
-        total_nucleaire_reellement_fourni = 0
+        centrale_temporelle = store.centrales.get(plant_id)
+        # Etat réel avant le calcul
+        puissance_precedente = etat_centrales[plant_id]
 
-        for allocation in resultat_repartition["allocation"]:
+        # Ce que l'on souhaiterait atteindre
+        puissance_souhaitee = (puissance_precedente + allocation_souhaitee)
 
-            plant_id = allocation["plant_id"]
-
-            allocation_souhaitee = allocation["allocated_mw"]
-
-            centrale_temporelle = store.centrales.get(plant_id)
-            # Etat réel avant le calcul
-            puissance_precedente = etat_centrales[plant_id]
-
-            # Ce que l'on souhaiterait atteindre
-            puissance_souhaitee = (puissance_precedente + allocation_souhaitee)
-
-# ---------------------------------------------
-# Contraintes 
-# ---------------------------------------------
-
-            nouvelle_puissance_reelle = puissance_reelle(
-                puissance_precedente,
-                puissance_souhaitee,
-                centrale_temporelle
+        nouvelle_puissance_reelle = puissance_reelle(
+            puissance_precedente,
+            puissance_souhaitee,
+            centrale_temporelle
         )
 
-            # Ce que la centrale a réellement pu ajouter
-            production_reelle_fournie = (
-                nouvelle_puissance_reelle
-                - puissance_precedente
-            )
-
-            production_reelle_fournie = max(
-                production_reelle_fournie,
-                0
-            )
-
-        # Mise à jour de l'état
-            etat_centrales[plant_id] = (
-                nouvelle_puissance_reelle
-            )
-
-            total_nucleaire_reellement_fourni += (
-                production_reelle_fournie
-            )
-
-            allocations_reelles.append({
-                "plant_id": plant_id,
-
-                "puissance_precedente_mw":
-                    puissance_precedente,
-
-                "allocation_souhaitee_mw":
-                    allocation_souhaitee,
-
-                "puissance_souhaitee_mw":
-                    puissance_souhaitee,
-
-                "puissance_reelle_mw":
-                    nouvelle_puissance_reelle,
-
-                "production_reelle_fournie_mw":
-                    production_reelle_fournie
-            })
-
-# ---------------------------------------------------------
-# 9. BESOIN QUI RESTE RÉELLEMENT NON COUVERT
-# ---------------------------------------------------------
-
-        besoin_non_couvert = max(
-            demande_mw
-            - total_nucleaire_reellement_fourni,
+        # Ce que la centrale a réellement pu ajouter
+        production_reelle_fournie = max(
+            nouvelle_puissance_reelle - puissance_precedente,
             0
         )
 
-# ---------------------------------------------------------
-# 10. RÉSULTAT
-# ---------------------------------------------------------
+        # Mise à jour de l'état
+        etat_centrales[plant_id] = nouvelle_puissance_reelle
+        total_nucleaire_reellement_fourni += production_reelle_fournie
+
+        allocations_reelles.append({
+            "plant_id": plant_id,
+            "puissance_precedente_mw": puissance_precedente,
+            "allocation_souhaitee_mw": allocation_souhaitee,
+            "puissance_souhaitee_mw": puissance_souhaitee,
+            "puissance_reelle_mw": nouvelle_puissance_reelle,
+            "production_reelle_fournie_mw": production_reelle_fournie,
+        })
+
+    # Besoin qui reste réellement non couvert
+    besoin_non_couvert = max(demande_mw - total_nucleaire_reellement_fourni, 0)
 
     return {
-            "region": region_id,
-            "index": index,
-            "heure": donnees_consommation["timestamps"][index],
-            "besoin_residuel_mw":demande_mw,
-            "repartition_souhaitee":resultat_repartition,
-            "allocations_apres_contraintes":allocations_reelles,
-            "production_nucleaire_reellement_fournie_mw":total_nucleaire_reellement_fourni,
-            "besoin_non_couvert_mw":besoin_non_couvert,
-            "etat_centrales_apres_calcul":etat_centrales
-        }
+        "region": region_id,
+        "index": index,
+        "heure": donnees_consommation["timestamps"][index],
+        "besoin_residuel_mw": demande_mw,
+        "repartition_souhaitee": resultat_repartition,
+        "allocations_apres_contraintes": allocations_reelles,
+        "production_nucleaire_reellement_fournie_mw": total_nucleaire_reellement_fourni,
+        "besoin_non_couvert_mw": besoin_non_couvert,
+        "etat_centrales_apres_calcul": etat_centrales,
+    }
+
+
+@router.post("/simulation-complete")
+def simulation_complete(filtre: Optional[SimulationCompleteFiltre] = None):
+
+# ---------------------------------------------------------
+# 1. CHARGEMENT DES DONNÉES (ensemble des faits de consommation)
+# ---------------------------------------------------------
+    store = get_store()
+    donnees_consommation = charger_journee_reference()
+
+    donnees_non_pilotables = (charger_journee_reference_hors_nucleaire())
+
+    # data.json
+    production_nucleaire = charger_production_nucleaire()
+
+# ---------------------------------------------------------
+# 2. CALCUL DU BESOIN RÉSIDUEL POUR TOUTE LA JOURNÉE
+# ---------------------------------------------------------
+
+    journee = parcourir_journee(donnees_consommation)
+    production_solaire = recuperer_donnees_solaires(donnees_non_pilotables)
+    production_eolien = recuperer_donnees_eolien(donnees_non_pilotables)
+    production_non_pilotable = production_hors_nucleaire(production_solaire,production_eolien)
+    besoins_residuels = calcul_besoins_residuels(journee,production_non_pilotable)
+
+# ---------------------------------------------------------
+# 3. APPLICATION DU FILTRE FACULTATIF (région / heure)
+# ---------------------------------------------------------
+
+    regions_disponibles = list(besoins_residuels.keys())
+    timestamps = donnees_consommation["timestamps"]
+
+    region_filtre = filtre.region if filtre else None
+    heure_filtre = filtre.heure if filtre else None
+
+    if region_filtre is not None:
+        if region_filtre not in regions_disponibles:
+            raise HTTPException(
+                status_code=404, detail=f"Région '{region_filtre}' introuvable"
+            )
+        regions_a_traiter = [region_filtre]
+    else:
+        regions_a_traiter = regions_disponibles
+
+    if heure_filtre is not None:
+        if heure_filtre not in timestamps:
+            raise HTTPException(
+                status_code=404, detail=f"Heure '{heure_filtre}' introuvable"
+            )
+        indices_a_traiter = [timestamps.index(heure_filtre)]
+    else:
+        indices_a_traiter = list(range(len(timestamps)))
+
+# ---------------------------------------------------------
+# 4. CALCUL POUR CHAQUE RÉGION / QUART D'HEURE RETENU
+# ---------------------------------------------------------
+
+    resultats = {
+        region_id: [
+            _simulation_complete_region_heure(
+                region_id,
+                index,
+                store,
+                donnees_consommation,
+                besoins_residuels,
+                production_nucleaire,
+            )
+            for index in indices_a_traiter
+        ]
+        for region_id in regions_a_traiter
+    }
+
+    return {
+        "regions": regions_a_traiter,
+        "heures": [timestamps[index] for index in indices_a_traiter],
+        "resultats": resultats,
+    }
