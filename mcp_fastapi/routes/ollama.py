@@ -1,4 +1,5 @@
 import json
+import os
 
 import httpx
 from fastapi import APIRouter, HTTPException
@@ -6,334 +7,193 @@ from fastapi import APIRouter, HTTPException
 router = APIRouter()
 
 OLLAMA_URL = "http://langage:11434"
-
 OLLAMA_MODEL = "qwen2.5:7b"
 
-METIER_URL = "http://python-service:8000" 
+MCP_FASTAPI_URL = "http://mcp-fastapi:8003"
+API_URL = "http://python-service:8000"
+API_PASSWORD = os.getenv("API_PASSWORD", "5")
 
 
-# --------------------------------------------------
-# Données de normalisation
-# --------------------------------------------------
-
-REGIONS = {
-    "Centre-Val de Loire": 24,
-    "Bourgogne-Franche-Comté": 27,
-    "Normandie": 28,
-    "Hauts-de-France": 32,
-    "Grand Est": 44,
-    "Pays de la Loire": 52,
-    "Bretagne": 53,
-    "Nouvelle-Aquitaine": 75,
-    "Occitanie": 76,
-    "Auvergne-Rhône-Alpes": 84,
-    "Provence-Alpes-Côte d'Azur": 93,
-    "Corse": 94
-}
-
-
-# --------------------------------------------------
-# Normalisation
-# --------------------------------------------------
-
-@router.get("/normaliser")
-async def normaliser_question(question: str):
-
-    # 1. Vérification de la question
-    if not question.strip():
-        raise HTTPException(
-            status_code=400,
-            detail="Question manquante"
-        )
-
-    # 2. Récupération dynamique des routes
-    async with httpx.AsyncClient() as client:
-        routes_response = await client.get(
-            "http://mcp-fastapi:8003/routes",
-            timeout=30
-        )
-
-        routes_response.raise_for_status()
-        routes_data = routes_response.json()
-
-    # 3. Construction du texte contenant les routes
-    routes_prompt = ""
-
-    for route in routes_data["routes"]:
-        routes_prompt += f"""
-        - Route : {route["methode"]} {route["chemin"]}
-        Description : {route["description"]}
-        ID : {route["id"]}
-        """
-
-
-    # 2. Prompt envoyé à Ollama
-    prompt = f"""
-    Tu es le module d'interprétation des requêtes utilisateur
-    de l'application EnergIA.
-
-    Ton rôle n'est PAS de répondre à la question.
-
-    Ton rôle est uniquement de transformer une question en langage naturel
-    en une instruction structurée permettant au MCP d'appeler l'API EnergIA.
-
-    Tu dois :
-
-    1. identifier l'intention de l'utilisateur ;
-    2. choisir uniquement une route parmi les routes disponibles ;
-    3. extraire les paramètres présents dans la question ;
-    4. retourner uniquement un JSON valide.
-
-
-    ROUTES DISPONIBLES
-
-    {routes_prompt}
-
-    NORMALISATION
-
-    REGION :
-    Retourne le nom officiel de la région française.
-
-    Exemples :
-
-    "occitanie" -> "Occitanie"
-    "OCCITANIE" -> "Occitanie"
-    "bretagne" -> "Bretagne"
-    "hauts de france" -> "Hauts-de-France"
-
-    N'invente jamais une région.
-
-
-    HEURE :
-    Retourne toujours l'heure au format HH:MM.
-
-    Exemples :
-
-    "8h" -> "08:00"
-    "8h30" -> "08:30"
-    "18 heures" -> "18:00"
-
-
-    PUISSANCE :
-
-    Toutes les puissances doivent être exprimées en MW.
-
-    Retourne uniquement une valeur numérique.
-
-    Exemples :
-
-    "500 MW" -> 500
-    "1 200 MW" -> 1200
-    "1,5 GW" -> 1500
-
-
-    FORMAT OBLIGATOIRE
-
-{{
-    "route_id": null,
-    "route": "/nom_route",
-    "method": "GET",
-    "params": {{}}
-}}
-
-
-    RÈGLES STRICTES
-
-    - "route_id" doit correspondre exactement à l'identifiant de la route choisie dans ROUTES DISPONIBLES.
-    - "route" doit correspondre exactement au chemin de cette même route.
-    - "method" doit correspondre exactement à sa méthode HTTP.
-    - N'invente jamais de route_id, de route ou de méthode.
-    - Réponds uniquement avec du JSON valide.
-    - Aucun texte avant ou après le JSON.
-    - N'invente jamais de route.
-    - N'invente jamais de paramètre.
-    - N'invente jamais de valeur absente.
-    - Respecte exactement les noms des paramètres.
-    - Si un paramètre obligatoire est absent, utilise null.
-
-
-    Si aucune route ne correspond :
-
-    {{
-        "route_id": null,
-        "route": null,
-        "method": null,
-        "params": {{}}
-    }}
-
-
-    EXEMPLE 1
-
-    Question utilisateur :
-    "Liste-moi toutes les régions disponibles."
-
-    Réponse :
-
-    {{
-        "route_id": null,
-        "route": "/regions",
-        "method": "GET",
-        "params": {{}}
-    }}
-
-    EXEMPLE 2
-
-    Question utilisateur :
-    "Donne-moi les informations de la centrale numéro 12."
-
-    Réponse :
-
-    {{
-        "route_id": null,
-        "route": "/dijkstra/centrales/{{centrale_id}}",
-        "method": "GET",
-        "params": {{
-            "centrale_id": 12
-        }}
-    }}
-
-    EXEMPLE 3
-
-    Question utilisateur :
-    "Quel est le plus court chemin entre la centrale de Golfech et celle de Tricastin ?"
-
-    Réponse :
-
-    {{
-        "route_id": null,
-        "route": "/dijkstra/shortest-path",
-        "method": "GET",
-        "params": {{
-            "source": "Golfech",
-            "destination": "Tricastin"
-        }}
-    }}
-    
-    QUESTION UTILISATEUR
-
-    {question}
-    """
-    # --------------------------------------------------
-    # 3. Appel à Ollama
-    # --------------------------------------------------
+async def appeler_ollama(prompt: str, *, timeout: float) -> str:
+    # Note : le format JSON contraint d'Ollama ("format": "json") force une
+    # sortie syntaxiquement valide mais est très lent en inférence CPU
+    # (grammaire GBNF). On s'appuie donc uniquement sur le prompt pour
+    # obtenir du JSON, avec un parsing tolérant côté appelant.
+    payload = {
+        "model": OLLAMA_MODEL,
+        "prompt": prompt,
+        "stream": False,
+        "options": {"num_thread": os.cpu_count() or 4},
+    }
 
     try:
         async with httpx.AsyncClient() as client:
-
             response = await client.post(
                 f"{OLLAMA_URL}/api/generate",
-                json={
-                    "model": OLLAMA_MODEL,
-                    "prompt": prompt,
-                    "stream": False,
-                    "format": "json"
-                },
-                timeout=60
+                json=payload,
+                timeout=timeout,
             )
-
         response.raise_for_status()
-
     except httpx.HTTPError as erreur:
-
         raise HTTPException(
             status_code=502,
             detail=f"Erreur lors de l'appel à Ollama : {erreur}"
         )
 
-    # --------------------------------------------------
-    # 4. Récupération de la réponse Ollama
-    # --------------------------------------------------
+    texte = response.json().get("response")
 
-    ollama_data = response.json()
-
-    texte_json = ollama_data.get("response")
-
-    
-    texte_json['method']
-
-
-    try:
-        async with httpx.AsyncClient() as client:
-
-            if texte_json['method'] == "GET" :
-                response = await client.get(
-                        f"{METIER_URL}{texte_json['route']}",
-
-                        timeout=60
-                    )
-            
-            elif texte_json['method'] == "POST" :
-                response = await client.post(
-                        f"{METIER_URL}{texte_json['route']}",
-
-                        timeout=60
-                    )
-            
-        response.raise_for_status()
-    
-    except httpx.HTTPError as erreur:
-
-        raise HTTPException(
-            status_code=502,
-            detail=f"Erreur lors de l'appel à Ollama : {erreur}"
-        )
-   
-
-    if not texte_json:
-
+    if not texte:
         raise HTTPException(
             status_code=502,
             detail="Ollama n'a retourné aucune réponse"
         )
 
+    return texte
+
+
+def tronquer_listes(valeur, max_elements: int = 5):
+    """Réduit les listes imbriquées à `max_elements` pour garder un JSON
+    valide et léger (plutôt que de tronquer bêtement une chaîne, ce qui
+    casse la syntaxe JSON et perturbe le modèle)."""
+    if isinstance(valeur, list):
+        tronquee = [tronquer_listes(v, max_elements) for v in valeur[:max_elements]]
+        if len(valeur) > max_elements:
+            tronquee.append(f"... ({len(valeur) - max_elements} éléments non affichés)")
+        return tronquee
+    if isinstance(valeur, dict):
+        return {cle: tronquer_listes(v, max_elements) for cle, v in valeur.items()}
+    return valeur
+
+
+@router.get("/normaliser")
+async def normaliser_question(question: str):
+
+    if not question.strip():
+        raise HTTPException(status_code=400, detail="Question manquante")
+
     # --------------------------------------------------
-    # 5. Conversion texte JSON -> dictionnaire Python
+    # 1. Extraction de mots-clés depuis la question
     # --------------------------------------------------
+
+    prompt_mots_cles = f"""
+    Tu extrais les mots-clés importants d'une question posée à propos
+    du réseau électrique français (centrales, régions, consommation,
+    production, simulation, anomalies...).
+
+    Réponds uniquement avec un JSON de la forme :
+    {{"mots_cles": ["mot1", "mot2"]}}
+
+    Question : {question}
+    """
+
+    texte_mots_cles = await appeler_ollama(prompt_mots_cles, timeout=90)
 
     try:
-
-        resultat = json.loads(texte_json)
-
-    except json.JSONDecodeError:
-
+        debut, fin = texte_mots_cles.index("{"), texte_mots_cles.rindex("}") + 1
+        mots_cles = json.loads(texte_mots_cles[debut:fin]).get("mots_cles", [])
+    except ValueError:
         raise HTTPException(
             status_code=502,
-            detail="La réponse d'Ollama n'est pas un JSON valide"
+            detail="La réponse d'Ollama (mots-clés) n'est pas un JSON valide"
         )
 
-    # # --------------------------------------------------
-    # # 6. Récupération des paramètres
-    # # --------------------------------------------------
+    mots_cles = [m.lower().strip() for m in mots_cles if isinstance(m, str) and m.strip()]
 
-    # params = resultat.get("params", {})
-
-    # # --------------------------------------------------
-    # # 7. Normalisation déterministe de la région
-    # # --------------------------------------------------
-
-    # region = params.get("region")
-
-    # if region is not None:
-
-    #     region_id = REGIONS.get(region)
-
-    #     if region_id is None:
-
-    #         raise HTTPException(
-    #             status_code=400,
-    #             detail=f"Région inconnue : {region}"
-    #         )
-
-    #     params["region"] = region_id
-
-    # # --------------------------------------------------
-    # # 8. Remise des paramètres normalisés
-    # # --------------------------------------------------
-
-    # resultat["params"] = params
+    if not mots_cles:
+        raise HTTPException(
+            status_code=422,
+            detail="Aucun mot-clé n'a pu être extrait de la question"
+        )
 
     # --------------------------------------------------
-    # 9. Retour au MCP
+    # 2. Recherche des routes dont la description contient un mot-clé
     # --------------------------------------------------
 
-    return resultat
+    async with httpx.AsyncClient() as client:
+        routes_response = await client.get(f"{MCP_FASTAPI_URL}/routes", timeout=30)
+        routes_response.raise_for_status()
+        toutes_les_routes = routes_response.json()["routes"]
+
+    routes_correspondantes = [
+        route
+        for route in toutes_les_routes
+        if route["methode"] == "GET"
+        and "{" not in route["chemin"]
+        and any(mot in route["description"].lower() for mot in mots_cles)
+    ]
+
+    if not routes_correspondantes:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Aucune route ne correspond aux mots-clés {mots_cles}"
+        )
+
+    # --------------------------------------------------
+    # 3. Appel des routes correspondantes sur l'API EnergIA
+    # --------------------------------------------------
+
+    resultats = []
+
+    async with httpx.AsyncClient() as client:
+        for route in routes_correspondantes:
+            chemin = route["chemin"]
+
+            try:
+                reponse = await client.get(
+                    f"{API_URL}{chemin}",
+                    headers={"x-password": API_PASSWORD},
+                    timeout=30,
+                )
+                try:
+                    donnees = reponse.json()
+                except ValueError:
+                    donnees = reponse.text
+
+                resultats.append({
+                    "route": chemin,
+                    "status": reponse.status_code,
+                    "donnees": donnees,
+                })
+            except httpx.HTTPError as erreur:
+                resultats.append({"route": chemin, "erreur": str(erreur)})
+
+    # --------------------------------------------------
+    # 4. Génération d'une réponse en langage naturel
+    # --------------------------------------------------
+
+    # On tronque les listes des données de chaque route (et, en filet de
+    # sécurité, la chaîne JSON résultante) pour rester dans une taille de
+    # prompt raisonnable : le modèle tourne avec une fenêtre de contexte
+    # limitée, surtout en inférence CPU, et certains objets (ex: centrales)
+    # restent volumineux même réduits à quelques éléments.
+    TAILLE_MAX_PAR_ROUTE = 800
+    lignes = []
+    for r in resultats:
+        texte = json.dumps(tronquer_listes(r.get("donnees", r.get("erreur")), max_elements=2), ensure_ascii=False)
+        if len(texte) > TAILLE_MAX_PAR_ROUTE:
+            texte = texte[:TAILLE_MAX_PAR_ROUTE] + "... (tronqué)"
+        lignes.append(f"- {r['route']} : {texte}")
+    donnees_texte = "\n".join(lignes)
+
+    prompt_reponse = f"""
+    Tu es l'assistant de l'application EnergIA.
+
+    Réponds en français, de façon claire et concise, à la question de
+    l'utilisateur en te basant uniquement sur les données JSON fournies
+    ci-dessous (éventuellement tronquées). N'invente aucune donnée absente
+    de ces données.
+
+    QUESTION : {question}
+
+    DONNÉES :
+    {donnees_texte}
+    """
+
+    reponse_texte = await appeler_ollama(prompt_reponse, timeout=280)
+
+    return {
+        "question": question,
+        "mots_cles": mots_cles,
+        "routes_utilisees": [r["route"] for r in resultats],
+        "reponse": reponse_texte.strip(),
+    }
