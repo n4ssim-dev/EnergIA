@@ -1,7 +1,9 @@
 import json
+import os
 import sqlite3
 from pathlib import Path
 
+import psycopg
 from fastapi import APIRouter, Depends
 
 from catalog import ROUTES_CATALOG, TABLES
@@ -9,14 +11,30 @@ from catalog import ROUTES_CATALOG, TABLES
 from .auth import check_password
 
 # analytics.db est désormais la source lue par ms_dijkstra (graph/datastore.py)
-# via un chemin cross-service vers ms_etl/data.
+# via un chemin cross-service vers ms_data/data.
 DATA_DIR = Path(__file__).parent.parent / "data"
 DB_PATH = DATA_DIR / "analytics.db"
 SCHEMA_PATH = DATA_DIR / "mcd_analytique.sql"
+# Même fichier que celui monté dans le conteneur Postgres pour le bootstrap
+# initial (docker-entrypoint-initdb.d) : voir postgres/docker-compose.yml.
+POSTGRES_SCHEMA_PATH = Path(__file__).parent.parent / "postgres" / "init" / "001_schema.sql"
 
 FILIERES = {
     "solar": "Solaire",
     "wind": "Éolien",
+}
+
+# Colonnes LOGICAL côté SQLite (stockées en 0/1) qu'il faut recaster en bool
+# avant insertion dans les colonnes BOOLEAN de Postgres.
+POSTGRES_BOOLEAN_COLUMNS = {
+    "region": {"connected_to_continental_grid"},
+    "centrale": {
+        "available", "values_are_simulated", "minimum_power_fallback_used",
+        "values_are_simulated_except_maximum_power",
+    },
+    "liaison": {"bidirectional", "available", "topology_is_synthetic", "capacity_and_loss_are_simulated"},
+    "route": {"authentification_requise"},
+    "parametre_route": {"requis"},
 }
 
 
@@ -32,6 +50,58 @@ def reset_schema(conn):
         conn.execute(f"DROP TABLE IF EXISTS {table}")
     conn.executescript(SCHEMA_PATH.read_text(encoding="utf-8"))
     conn.execute("PRAGMA foreign_keys = ON")
+
+
+def get_postgres_connection():
+    return psycopg.connect(
+        host=os.getenv("POSTGRES_HOST", "localhost"),
+        port=os.getenv("POSTGRES_PORT", "5432"),
+        user=os.getenv("POSTGRES_USER", "energia"),
+        password=os.getenv("POSTGRES_PASSWORD", "energia"),
+        dbname=os.getenv("POSTGRES_DB", "energia"),
+    )
+
+
+def reset_postgres_schema(pg_conn):
+    with pg_conn.cursor() as cur:
+        for table in TABLES:
+            cur.execute(f"DROP TABLE IF EXISTS {table} CASCADE")
+        for statement in POSTGRES_SCHEMA_PATH.read_text(encoding="utf-8").split(";"):
+            statement = statement.strip()
+            if statement:
+                cur.execute(statement)
+
+
+def mirror_to_postgres(sqlite_conn):
+    """Copie le contenu de analytics.db (déjà ingéré) vers Postgres, table par
+    table, dans l'ordre inverse de TABLES (parents avant enfants) pour
+    respecter les contraintes de clé étrangère."""
+    pg_conn = get_postgres_connection()
+    try:
+        reset_postgres_schema(pg_conn)
+        for table in reversed(TABLES):
+            columns = [row[1] for row in sqlite_conn.execute(f"PRAGMA table_info({table})")]
+            rows = sqlite_conn.execute(f"SELECT {', '.join(columns)} FROM {table}").fetchall()
+            if not rows:
+                continue
+            boolean_columns = POSTGRES_BOOLEAN_COLUMNS.get(table, set())
+            typed_rows = [
+                tuple(
+                    bool(value) if col in boolean_columns and value is not None else value
+                    for col, value in zip(columns, row)
+                )
+                for row in rows
+            ]
+            placeholders = ", ".join(["%s"] * len(columns))
+            insert_sql = f"INSERT INTO {table} ({', '.join(columns)}) VALUES ({placeholders})"
+            with pg_conn.cursor() as cur:
+                cur.executemany(insert_sql, typed_rows)
+        pg_conn.commit()
+    except Exception:
+        pg_conn.rollback()
+        raise
+    finally:
+        pg_conn.close()
 
 
 def _load(filename):
@@ -385,7 +455,8 @@ def ingest_routes(conn):
 
 def run_ingestion():
     """Recrée le schéma depuis mcd_analytique.sql puis recharge tous les JSON
-    de ms_dijkstra/data. Idempotent : rejouable sans accumulation de doublons."""
+    de ms_dijkstra/data dans SQLite, puis mirroir le résultat vers Postgres
+    (ms_database). Idempotent : rejouable sans accumulation de doublons."""
     conn = get_connection()
     try:
         reset_schema(conn)
@@ -397,6 +468,7 @@ def run_ingestion():
         summary.update(ingest_scenarios_phase3(conn))
         summary.update(ingest_routes(conn))
         conn.commit()
+        mirror_to_postgres(conn)
         return summary
     except Exception:
         conn.rollback()

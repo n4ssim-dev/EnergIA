@@ -14,4 +14,4 @@ def health():
 
 @app.get("/")
 def home():
-    return {"message": "Microservice ETL EnergIA"}
+    return {"message": "Microservice Data EnergIA"}

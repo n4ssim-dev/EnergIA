@@ -25,9 +25,9 @@ ROUTES_CATALOG = [
         ],
     },
     {
-        "chemin": "/database/ingest", "methode": "POST", "fichier_source": "ms_etl/routes/database.py",
+        "chemin": "/database/ingest", "methode": "POST", "fichier_source": "ms_data/routes/database.py",
         "description": "Recrée le schéma et réingère tous les JSON de ms_dijkstra/data "
-        "(et le catalogue de routes) dans analytics.db",
+        "(et le catalogue de routes) dans analytics.db et Postgres",
         "auth": True, "parametres": [],
     },
     {
