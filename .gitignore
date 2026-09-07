@@ -127,3 +127,5 @@ ollama_data/
 # Override docker-compose personnel (ex: GPU Intel via IPEX-LLM) : jamais
 # partagé, chargé uniquement si listé dans COMPOSE_FILE de son .env local.
 docker-compose.local.yml
+
+ms_data/data/eco2mix-regional-tr.csv
