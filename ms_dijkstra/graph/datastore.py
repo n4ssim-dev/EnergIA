@@ -4,7 +4,9 @@ from pathlib import Path
 from .models import Centrale, Graph, Liaison, Reactor, Region
 
 
-DB_PATH = Path(__file__).parent.parent / "data" / "analytics.db"
+# analytics.db est produite par ms_etl (extraction + chargement) ; ms_dijkstra
+# la consomme en lecture seule depuis ms_etl/data.
+DB_PATH = Path(__file__).parent.parent.parent / "ms_etl" / "data" / "analytics.db"
 
 # Conteneur central (centrales, régions, liaisons et graphe associé)
 
