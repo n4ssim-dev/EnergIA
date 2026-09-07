@@ -10,17 +10,16 @@ ENV PYTHONUNBUFFERED=1
 WORKDIR /app
 
 # Copier les dépendances
-COPY ./ms_mcp/pyproject.toml ./ms_mcp/uv.lock ./
+COPY pyproject.toml uv.lock ./
 
 # Installer les dépendances
 RUN uv sync --frozen --no-dev
 
 # Copier le reste du projet
-COPY ./ms_mcp .
-COPY ./ms_data/data /ms_data/data
+COPY . .
 
 # Exposer le port de l'API
-EXPOSE 8003
+EXPOSE 8004
 
 # Lancer l'application
-CMD ["uv", "run", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8003", "--reload"]
+CMD ["uv", "run", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8004", "--reload"]

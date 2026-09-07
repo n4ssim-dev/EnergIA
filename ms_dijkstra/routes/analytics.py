@@ -3,7 +3,7 @@ import sqlite3
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from .auth import check_password
-from .db import DB_PATH
+from graph.datastore import DB_PATH
 
 router = APIRouter(prefix="/analytics", dependencies=[Depends(check_password)])
 

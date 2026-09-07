@@ -3,8 +3,8 @@ from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Query
 
-# EnergIA/mcp_fastapi/routes/routes.py -> EnergIA/fastapi/data/analytics.db
-DB_PATH = Path(__file__).resolve().parents[2] / "fastapi" / "data" / "analytics.db"
+# EnergIA/ms_mcp/routes/routes.py -> EnergIA/ms_data/data/analytics.db
+DB_PATH = Path(__file__).resolve().parents[2] / "ms_data" / "data" / "analytics.db"
 
 router = APIRouter(prefix="/routes")
 

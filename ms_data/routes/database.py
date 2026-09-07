@@ -1,213 +1,41 @@
 import json
+import os
 import sqlite3
 from pathlib import Path
 
+import psycopg
 from fastapi import APIRouter, Depends
+
+from catalog import ROUTES_CATALOG, TABLES
 
 from .auth import check_password
 
+# analytics.db est désormais la source lue par ms_dijkstra (graph/datastore.py)
+# via un chemin cross-service vers ms_data/data.
 DATA_DIR = Path(__file__).parent.parent / "data"
 DB_PATH = DATA_DIR / "analytics.db"
 SCHEMA_PATH = DATA_DIR / "mcd_analytique.sql"
+# Même fichier que celui monté dans le conteneur Postgres pour le bootstrap
+# initial (docker-entrypoint-initdb.d) : voir postgres/docker-compose.yml.
+POSTGRES_SCHEMA_PATH = Path(__file__).parent.parent / "postgres" / "init" / "001_schema.sql"
 
 FILIERES = {
     "solar": "Solaire",
     "wind": "Éolien",
 }
 
-# Catalogue statique des routes exposées par l'API (méthode, fichier source,
-# description, paramètres). Entretenu à la main : à mettre à jour en cas
-# d'ajout/suppression/modification de route dans routes/*.py.
-ROUTES_CATALOG = [
-    {
-        "chemin": "/centrales", "methode": "GET", "fichier_source": "api.py",
-        "description": "Liste des centrales (datastore, chargé depuis analytics.db)",
-        "auth": True, "parametres": [],
+# Colonnes LOGICAL côté SQLite (stockées en 0/1) qu'il faut recaster en bool
+# avant insertion dans les colonnes BOOLEAN de Postgres.
+POSTGRES_BOOLEAN_COLUMNS = {
+    "region": {"connected_to_continental_grid"},
+    "centrale": {
+        "available", "values_are_simulated", "minimum_power_fallback_used",
+        "values_are_simulated_except_maximum_power",
     },
-    {
-        "chemin": "/regions", "methode": "GET", "fichier_source": "api.py",
-        "description": "Liste des régions", "auth": True, "parametres": [],
-    },
-    {
-        "chemin": "/liaisons", "methode": "GET", "fichier_source": "api.py",
-        "description": "Liste des liaisons inter-centrales", "auth": True, "parametres": [],
-    },
-    {
-        "chemin": "/simulation", "methode": "GET", "fichier_source": "api.py",
-        "description": "Répartition d'une demande supplémentaire sur une région",
-        "auth": True,
-        "parametres": [
-            {"nom": "region", "emplacement": "query", "type": "str", "requis": True},
-            {"nom": "augmentation_mw", "emplacement": "query", "type": "float", "requis": True},
-        ],
-    },
-    {
-        "chemin": "/db/ingest", "methode": "POST", "fichier_source": "db.py",
-        "description": "Recrée le schéma et réingère tous les JSON (et le catalogue de routes) dans analytics.db",
-        "auth": True, "parametres": [],
-    },
-    {
-        "chemin": "/dijkstra/load-datastore", "methode": "GET", "fichier_source": "dijkstra.py",
-        "description": "Recharge le datastore mémoire depuis analytics.db", "auth": True, "parametres": [],
-    },
-    {
-        "chemin": "/dijkstra/rapport", "methode": "GET", "fichier_source": "dijkstra.py",
-        "description": "Rapport global : comptages, puissance installée totale, anomalies",
-        "auth": True, "parametres": [],
-    },
-    {
-        "chemin": "/dijkstra/shortest-path", "methode": "GET", "fichier_source": "dijkstra.py",
-        "description": "Plus court chemin (Dijkstra) entre deux centrales",
-        "auth": True,
-        "parametres": [
-            {"nom": "from_node", "emplacement": "query", "type": "str", "requis": True},
-            {"nom": "to_node", "emplacement": "query", "type": "str", "requis": True},
-        ],
-    },
-    {
-        "chemin": "/dijkstra/centrales", "methode": "GET", "fichier_source": "dijkstra.py",
-        "description": "Liste des centrales (datastore)", "auth": True, "parametres": [],
-    },
-    {
-        "chemin": "/dijkstra/centrales/{centrale_id}", "methode": "GET", "fichier_source": "dijkstra.py",
-        "description": "Détail d'une centrale",
-        "auth": True,
-        "parametres": [
-            {"nom": "centrale_id", "emplacement": "path", "type": "str", "requis": True},
-        ],
-    },
-    {
-        "chemin": "/dijkstra/regions", "methode": "GET", "fichier_source": "dijkstra.py",
-        "description": "Liste des régions (datastore)", "auth": True, "parametres": [],
-    },
-    {
-        "chemin": "/dijkstra/regions/{region_id}", "methode": "GET", "fichier_source": "dijkstra.py",
-        "description": "Détail d'une région",
-        "auth": True,
-        "parametres": [
-            {"nom": "region_id", "emplacement": "path", "type": "str", "requis": True},
-        ],
-    },
-    {
-        "chemin": "/dijkstra/liaisons", "methode": "GET", "fichier_source": "dijkstra.py",
-        "description": "Liste des liaisons (datastore)", "auth": True, "parametres": [],
-    },
-    {
-        "chemin": "/dijkstra/anomalies", "methode": "GET", "fichier_source": "dijkstra.py",
-        "description": "Anomalies détectées dans le graphe/datastore", "auth": True, "parametres": [],
-    },
-    {
-        "chemin": "/dijkstra/calcule", "methode": "GET", "fichier_source": "dijkstra.py",
-        "description": "Répartition d'une demande sur une région",
-        "auth": True,
-        "parametres": [
-            {"nom": "region", "emplacement": "query", "type": "str", "requis": True},
-            {"nom": "augmentation_mw", "emplacement": "query", "type": "float", "requis": True},
-        ],
-    },
-    {
-        "chemin": "/dijkstra/simulation-regions", "methode": "POST", "fichier_source": "dijkstra.py",
-        "description": "Simulation multi-régions sur 96 pas de 15 min, avec perturbations optionnelles",
-        "auth": True,
-        "parametres": [
-            {
-                "nom": "perturbations", "emplacement": "body", "type": "list[Perturbation]",
-                "requis": False, "defaut": "null",
-            },
-        ],
-    },
-    {
-        "chemin": "/dijkstra/besoins-residuels", "methode": "GET", "fichier_source": "dijkstra.py",
-        "description": "Besoin résiduel (conso - solaire - éolien) par région et par quart d'heure",
-        "auth": True, "parametres": [],
-    },
-    {
-        "chemin": "/dijkstra/simulation-complete", "methode": "POST", "fichier_source": "dijkstra.py",
-        "description": "Simulation complète avec contraintes réelles sur l'ensemble des faits de consommation "
-        "(toutes régions, tous quarts d'heure), avec filtre facultatif par région et/ou heure",
-        "auth": True, "parametres": [
-            {
-                "nom": "region", "type": "string", "emplacement": "body",
-                "requis": False, "defaut": "null",
-            },
-            {
-                "nom": "heure", "type": "string", "emplacement": "body",
-                "requis": False, "defaut": "null",
-            },
-        ],
-    },
-    {
-        "chemin": "/analytics/centrales/{centrale_id}/etat", "methode": "GET", "fichier_source": "analytics.py",
-        "description": "État complet d'une centrale (dispo, puissance max/actuelle, marge, réacteurs)",
-        "auth": True,
-        "parametres": [
-            {"nom": "centrale_id", "emplacement": "path", "type": "str", "requis": True},
-        ],
-    },
-    {
-        "chemin": "/analytics/centrales/disponibles", "methode": "GET", "fichier_source": "analytics.py",
-        "description": "Nombre de centrales disponibles", "auth": True, "parametres": [],
-    },
-    {
-        "chemin": "/analytics/regions/{region_id}/consommation", "methode": "GET", "fichier_source": "analytics.py",
-        "description": "Consommation d'une région à un instant donné",
-        "auth": True,
-        "parametres": [
-            {"nom": "region_id", "emplacement": "path", "type": "str", "requis": True},
-            {"nom": "heure", "emplacement": "query", "type": "str", "requis": True},
-            {
-                "nom": "jour_relatif", "emplacement": "query", "type": "str",
-                "requis": False, "defaut": "reference_day",
-            },
-        ],
-    },
-    {
-        "chemin": "/analytics/regions/consommation/max", "methode": "GET", "fichier_source": "analytics.py",
-        "description": "Région qui consomme le plus à une heure donnée",
-        "auth": True,
-        "parametres": [
-            {"nom": "heure", "emplacement": "query", "type": "str", "requis": True},
-            {
-                "nom": "jour_relatif", "emplacement": "query", "type": "str",
-                "requis": False, "defaut": "reference_day",
-            },
-        ],
-    },
-    {
-        "chemin": "/analytics/regions/{region_id}/situation", "methode": "GET", "fichier_source": "analytics.py",
-        "description": "Situation énergétique d'une région (conso + prod solaire/éolien + capacité + solde)",
-        "auth": True,
-        "parametres": [
-            {"nom": "region_id", "emplacement": "path", "type": "str", "requis": True},
-            {"nom": "heure", "emplacement": "query", "type": "str", "requis": True},
-            {
-                "nom": "jour_relatif", "emplacement": "query", "type": "str",
-                "requis": False, "defaut": "reference_day",
-            },
-        ],
-    },
-]
-
-# Ordre sans contrainte particulière : PRAGMA foreign_keys est désactivé le
-# temps du drop, pour ne pas avoir à respecter l'ordre des FK.
-TABLES = [
-    "parametre_route",
-    "route",
-    "fait_evenement_consommation",
-    "scenario_phase3",
-    "scenario_override",
-    "scenario",
-    "accessible_via",
-    "reacteur",
-    "liaison",
-    "centrale",
-    "fait_consommation",
-    "fait_production_non_pilotable",
-    "capacitee_instalee_non_pilotable",
-    "dim_temps",
-    "filiere",
-    "region",
-]
+    "liaison": {"bidirectional", "available", "topology_is_synthetic", "capacity_and_loss_are_simulated"},
+    "route": {"authentification_requise"},
+    "parametre_route": {"requis"},
+}
 
 
 def get_connection():
@@ -222,6 +50,58 @@ def reset_schema(conn):
         conn.execute(f"DROP TABLE IF EXISTS {table}")
     conn.executescript(SCHEMA_PATH.read_text(encoding="utf-8"))
     conn.execute("PRAGMA foreign_keys = ON")
+
+
+def get_postgres_connection():
+    return psycopg.connect(
+        host=os.getenv("POSTGRES_HOST", "localhost"),
+        port=os.getenv("POSTGRES_PORT", "5432"),
+        user=os.getenv("POSTGRES_USER", "energia"),
+        password=os.getenv("POSTGRES_PASSWORD", "energia"),
+        dbname=os.getenv("POSTGRES_DB", "energia"),
+    )
+
+
+def reset_postgres_schema(pg_conn):
+    with pg_conn.cursor() as cur:
+        for table in TABLES:
+            cur.execute(f"DROP TABLE IF EXISTS {table} CASCADE")
+        for statement in POSTGRES_SCHEMA_PATH.read_text(encoding="utf-8").split(";"):
+            statement = statement.strip()
+            if statement:
+                cur.execute(statement)
+
+
+def mirror_to_postgres(sqlite_conn):
+    """Copie le contenu de analytics.db (déjà ingéré) vers Postgres, table par
+    table, dans l'ordre inverse de TABLES (parents avant enfants) pour
+    respecter les contraintes de clé étrangère."""
+    pg_conn = get_postgres_connection()
+    try:
+        reset_postgres_schema(pg_conn)
+        for table in reversed(TABLES):
+            columns = [row[1] for row in sqlite_conn.execute(f"PRAGMA table_info({table})")]
+            rows = sqlite_conn.execute(f"SELECT {', '.join(columns)} FROM {table}").fetchall()
+            if not rows:
+                continue
+            boolean_columns = POSTGRES_BOOLEAN_COLUMNS.get(table, set())
+            typed_rows = [
+                tuple(
+                    bool(value) if col in boolean_columns and value is not None else value
+                    for col, value in zip(columns, row)
+                )
+                for row in rows
+            ]
+            placeholders = ", ".join(["%s"] * len(columns))
+            insert_sql = f"INSERT INTO {table} ({', '.join(columns)}) VALUES ({placeholders})"
+            with pg_conn.cursor() as cur:
+                cur.executemany(insert_sql, typed_rows)
+        pg_conn.commit()
+    except Exception:
+        pg_conn.rollback()
+        raise
+    finally:
+        pg_conn.close()
 
 
 def _load(filename):
@@ -575,7 +455,8 @@ def ingest_routes(conn):
 
 def run_ingestion():
     """Recrée le schéma depuis mcd_analytique.sql puis recharge tous les JSON
-    de fastapi/data. Idempotent : rejouable sans accumulation de doublons."""
+    de ms_dijkstra/data dans SQLite, puis mirroir le résultat vers Postgres
+    (ms_database). Idempotent : rejouable sans accumulation de doublons."""
     conn = get_connection()
     try:
         reset_schema(conn)
@@ -587,6 +468,7 @@ def run_ingestion():
         summary.update(ingest_scenarios_phase3(conn))
         summary.update(ingest_routes(conn))
         conn.commit()
+        mirror_to_postgres(conn)
         return summary
     except Exception:
         conn.rollback()
@@ -595,7 +477,7 @@ def run_ingestion():
         conn.close()
 
 
-router = APIRouter(prefix="/db", dependencies=[Depends(check_password)])
+router = APIRouter(prefix="/database", dependencies=[Depends(check_password)])
 
 
 @router.post("/ingest")
