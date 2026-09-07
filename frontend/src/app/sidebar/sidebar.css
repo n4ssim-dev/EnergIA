@@ -1,0 +1,97 @@
+.sidebar {
+
+    width:280px;
+    height:100vh;
+
+    background:#111827;
+    color:white;
+
+    padding:25px;
+
+}
+
+
+.logo {
+
+    font-size:24px;
+    font-weight:bold;
+    color:#38bdf8;
+    margin-left:70px;
+    margin-bottom:30px;
+
+}
+
+
+.card {
+
+    background:#1e293b;
+
+    padding:15px;
+
+    border-radius:15px;
+
+    margin-bottom:20px;
+
+}
+
+
+.card h3 {
+
+    font-size:14px;
+
+    color:#94a3b8;
+
+    margin-bottom:10px;
+
+}
+
+
+
+select {
+
+    width:100%;
+
+    background:#0f172a;
+
+    color:white;
+
+    padding:10px;
+
+    border-radius:10px;
+
+}
+
+
+.card a {
+
+    display:block;
+
+    padding:10px;
+
+    margin-top:8px;
+
+    background:#0f172a;
+
+    color:white;
+
+    text-decoration:none;
+
+    border-radius:10px;
+
+    cursor:pointer;
+
+}
+
+
+.card a:hover {
+
+    background:#2563eb;
+
+}
+
+
+.online {
+
+    color:#22c55e;
+
+}

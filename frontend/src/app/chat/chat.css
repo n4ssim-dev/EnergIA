@@ -1,0 +1,281 @@
+* {
+    box-sizing: border-box;
+    font-family: "Segoe UI", Arial, sans-serif;
+}
+
+:host {
+
+    display: flex;
+    justify-content: center;
+    align-items: center;
+
+    min-height: 100vh;
+
+    background: #f4f6fb;
+
+    padding: 30px;
+}
+
+.chat-container {
+
+    width: 1000px;
+    max-width: 95%;
+
+    height: 85vh;
+
+    background: white;
+
+    border-radius: 20px;
+
+    box-shadow: 0 10px 35px rgba(0, 0, 0, .12);
+
+    display: flex;
+    flex-direction: column;
+
+    overflow: hidden;
+}
+
+/******************************
+ HEADER
+*******************************/
+
+.chat-header {
+
+    display: flex;
+    align-items: center;
+
+    gap: 20px;
+
+    padding: 25px 35px;
+
+    background: #E7B3FF;
+
+    color: white;
+}
+
+.logo {
+
+    width: 65px;
+    height: 65px;
+
+    border-radius: 50%;
+
+    background: white;
+
+    color: #E7B3FF;
+
+    display: flex;
+    justify-content: center;
+    align-items: center;
+
+    font-size: 34px;
+}
+
+.chat-header h1 {
+
+    margin: 0;
+
+    font-size: 32px;
+}
+
+.chat-header p {
+
+    margin: 5px 0 0;
+
+    opacity: .9;
+}
+
+/******************************
+ CONVERSATION
+*******************************/
+
+.conversation {
+
+    flex: 1;
+
+    padding: 30px;
+
+    overflow-y: auto;
+
+    background: #f8f9fc;
+}
+
+/******************************
+ MESSAGES
+*******************************/
+
+.message {
+
+    display: flex;
+
+    margin-bottom: 20px;
+}
+
+.message.user {
+
+    justify-content: flex-end;
+}
+
+.message.bot {
+
+    justify-content: flex-start;
+}
+
+.bubble {
+
+    max-width: 75%;
+
+    padding: 16px 20px;
+
+    border-radius: 18px;
+
+    line-height: 1.6;
+
+    font-size: 15px;
+}
+
+.user .bubble {
+
+    background: #E7B3FF;
+
+    color: white;
+
+    border-bottom-right-radius: 5px;
+}
+
+.bot .bubble {
+
+    background: white;
+
+    border: 1px solid #ddd;
+
+    color: #444;
+
+    border-bottom-left-radius: 5px;
+}
+
+/******************************
+ SAISIE
+*******************************/
+
+.chat-box {
+
+    display: flex;
+
+    gap: 15px;
+
+    padding: 25px;
+
+    background: white;
+
+    border-top: 1px solid #eee;
+}
+
+.chat-box input {
+
+    flex: 1;
+
+    padding: 18px;
+
+    border-radius: 12px;
+
+    border: 1px solid #ccc;
+
+    outline: none;
+
+    font-size: 16px;
+
+    transition: .3s;
+}
+
+.chat-box input:focus {
+
+    border-color: #E7B3FF;
+
+    box-shadow: 0 0 8px rgba(102, 126, 234, .25);
+}
+
+.chat-box button {
+
+    min-width: 120px;
+    height: 56px;
+
+    border: none;
+    border-radius: 12px;
+
+    background: #E7B3FF;
+    color: white;
+
+    font-size: 16px;
+    font-weight: 600;
+
+    cursor: pointer;
+
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 8px;
+
+    transition: .3s;
+}
+
+.chat-box button:hover {
+
+    background: #4f46e5;
+    transform: scale(1.03);
+}
+
+.chat-box .material-icons {
+
+    font-size: 28px;
+}
+
+/*  Chargement en cours réponse ollama */
+.typing-loader {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    height: 24px;
+    padding: 5px 0;
+}
+
+
+.typing-loader span {
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    background: #6b7280;
+    animation: typing 1.4s infinite ease-in-out;
+}
+
+
+/* Décalage entre les points */
+.typing-loader span:nth-child(1) {
+    animation-delay: 0s;
+}
+
+.typing-loader span:nth-child(2) {
+    animation-delay: 0.2s;
+}
+
+.typing-loader span:nth-child(3) {
+    animation-delay: 0.4s;
+}
+
+
+/* Animation */
+@keyframes typing {
+
+    0%,
+    60%,
+    100% {
+        transform: translateY(0);
+        opacity: 0.4;
+    }
+
+    30% {
+        transform: translateY(-8px);
+        opacity: 1;
+    }
+
+}
