@@ -1,4 +1,4 @@
-# Image officielle avec uv (gestionnaire de paquets utilisé par fastapi/)
+# Image officielle avec uv (gestionnaire de paquets utilisé par ms_dijkstra/)
 FROM ghcr.io/astral-sh/uv:python3.13-bookworm-slim
 
 # Empêche Python de créer les fichiers .pyc
@@ -11,13 +11,16 @@ ENV PYTHONUNBUFFERED=1
 WORKDIR /app
 
 # Copier les dépendances
-COPY ./fastapi/pyproject.toml ./fastapi/uv.lock ./
+COPY ./ms_dijkstra/pyproject.toml ./ms_dijkstra/uv.lock ./
 
 # Installer les dépendances
 RUN uv sync --frozen --no-dev
 
 # Copier le reste du projet
-COPY ./fastapi .
+COPY ./ms_dijkstra .
+# analytics.db est produite par ms_data ; graph/datastore.py la lit depuis
+# /ms_data/data (chemin cross-service, cf. ms_dijkstra/graph/datastore.py).
+COPY ./ms_data/data /ms_data/data
 
 # Exposer le port de FastAPI
 EXPOSE 8000

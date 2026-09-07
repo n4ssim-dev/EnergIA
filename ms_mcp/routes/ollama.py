@@ -9,7 +9,7 @@ router = APIRouter()
 OLLAMA_URL = "http://langage:11434"
 OLLAMA_MODEL = "qwen2.5:7b"
 
-MCP_FASTAPI_URL = "http://mcp-fastapi:8003"
+MS_MCP_URL = "http://mcp-fastapi:8003"
 API_URL = "http://python-service:8000"
 API_PASSWORD = os.getenv("API_PASSWORD", "5")
 
@@ -110,7 +110,7 @@ async def normaliser_question(question: str):
     # --------------------------------------------------
 
     async with httpx.AsyncClient() as client:
-        routes_response = await client.get(f"{MCP_FASTAPI_URL}/routes", timeout=30)
+        routes_response = await client.get(f"{MS_MCP_URL}/routes", timeout=30)
         routes_response.raise_for_status()
         toutes_les_routes = routes_response.json()["routes"]
 

@@ -10,14 +10,14 @@ ENV PYTHONUNBUFFERED=1
 WORKDIR /app
 
 # Copier les dépendances
-COPY ./mcp_fastapi/pyproject.toml ./mcp_fastapi/uv.lock ./
+COPY ./ms_mcp/pyproject.toml ./ms_mcp/uv.lock ./
 
 # Installer les dépendances
 RUN uv sync --frozen --no-dev
 
 # Copier le reste du projet
-COPY ./mcp_fastapi .
-COPY ./fastapi/data /fastapi/data
+COPY ./ms_mcp .
+COPY ./ms_data/data /ms_data/data
 
 # Exposer le port de l'API
 EXPOSE 8003
