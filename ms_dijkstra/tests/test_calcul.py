@@ -3,21 +3,21 @@ from routes.calcul import calcul_puissanceDispo, calcul_taux_saturation, reparti
 
 # Vérifier si le calcul de la puissance restante marche correctement
 def test_puissance_disponible():
-    result = calcul_puissanceDispo(100, 70)
+    result = calcul_puissanceDispo(100, 70, 50)
 
     assert result == 30
 
 
 # La puissance produite atteint exactement la limite
 def test_puissance_atteint_limite():
-    result = calcul_puissanceDispo(100, 100)
+    result = calcul_puissanceDispo(100, 100, 50)
 
     assert result == 0
 
 
 # La production dépasse la limite
 def test_puissance_depasse_limite():
-    result = calcul_puissanceDispo(100, 120)
+    result = calcul_puissanceDispo(100, 120, 50)
 
     assert result == 0
 
