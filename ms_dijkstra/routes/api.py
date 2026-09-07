@@ -32,7 +32,12 @@ def get_liaisons():
 
 @router.get("/simulation")
 def simulation(region: str, augmentation_mw: float):
-    resultat = run_simulation(region, augmentation_mw)
+    store = get_store()
+    etat_region = {
+        plant_id: central.initial_output_mw
+        for plant_id, central in store.centrales.items()
+    }
+    resultat = run_simulation(region, augmentation_mw,etat_region)
     return {
         "message": "Simulation lancée",
         "resultat": resultat,
