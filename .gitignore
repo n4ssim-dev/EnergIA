@@ -123,3 +123,7 @@ ollama_data/
 
 # Modèles locaux éventuels
 *.gguf
+
+# Override docker-compose personnel (ex: GPU Intel via IPEX-LLM) : jamais
+# partagé, chargé uniquement si listé dans COMPOSE_FILE de son .env local.
+docker-compose.local.yml
