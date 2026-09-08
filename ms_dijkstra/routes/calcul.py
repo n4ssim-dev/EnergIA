@@ -217,15 +217,19 @@ def calcul_distance_region(region_data, central):
 # 11. Chargement depuis analytics.db (reconstruit la forme des anciens JSON,
 #     pour ne rien changer aux fonctions/routes qui consomment ces données)
 # ---------------------------------------------------------------------------
-def charger_journee_reference_hors_nucleaire():
+def charger_journee_reference_hors_nucleaire(date_: str):
+    """date_ : jour ingéré (YYYY-MM-DD) via POST /database/ingest-eco2mix,
+    remplace l'ancien jour_relatif='reference_day' de dim_temps."""
     conn = _connect()
     try:
-        timestamps = [
-            row["heure"] for row in conn.execute(
-                "SELECT heure FROM dim_temps WHERE jour_relatif = 'reference_day' "
-                "ORDER BY step_index"
-            )
-        ]
+        rows = conn.execute(
+            "SELECT id_region, date_heure, solaire_mw, eolien_mw "
+            "FROM mesure_eco2mix_regionale WHERE date_heure LIKE ? "
+            "ORDER BY id_region, date_heure",
+            (f"{date_}T%",),
+        ).fetchall()
+
+        timestamps = sorted({row["date_heure"][11:16] for row in rows})
 
         regions_meta = {r["id"]: r["name"] for r in conn.execute("SELECT id, name FROM region")}
 
@@ -237,16 +241,12 @@ def charger_journee_reference_hors_nucleaire():
             capacites.setdefault(row["region_id"], {})[row["code_filiere"]] = row["capacitee_mw"]
 
         productions = {}
-        for row in conn.execute(
-            "SELECT fp.id_1 AS region_id, fp.code_filiere, fp.production_mw "
-            "FROM fait_production_non_pilotable fp "
-            "JOIN dim_temps dt ON dt.id_temps = fp.id_temps "
-            "WHERE dt.jour_relatif = 'reference_day' "
-            "ORDER BY fp.id_1, fp.code_filiere, dt.step_index"
-        ):
-            productions.setdefault(row["region_id"], {}).setdefault(
-                row["code_filiere"], []
-            ).append(row["production_mw"])
+        for row in rows:
+            filieres = productions.setdefault(
+                row["id_region"], {"solar": [], "wind": []}
+            )
+            filieres["solar"].append(row["solaire_mw"])
+            filieres["wind"].append(row["eolien_mw"])
 
         regions = [
             {
@@ -263,27 +263,25 @@ def charger_journee_reference_hors_nucleaire():
         conn.close()
 
 
-def charger_journee_reference():
+def charger_journee_reference(date_: str):
+    """date_ : jour ingéré (YYYY-MM-DD) via POST /database/ingest-eco2mix,
+    remplace l'ancien jour_relatif='reference_day' de dim_temps/fait_consommation."""
     conn = _connect()
     try:
-        timestamps = [
-            row["heure"] for row in conn.execute(
-                "SELECT heure FROM dim_temps WHERE jour_relatif = 'reference_day' "
-                "ORDER BY step_index"
-            )
-        ]
+        rows = conn.execute(
+            "SELECT id_region, date_heure, consommation_mw "
+            "FROM mesure_eco2mix_regionale WHERE date_heure LIKE ? "
+            "ORDER BY id_region, date_heure",
+            (f"{date_}T%",),
+        ).fetchall()
+
+        timestamps = sorted({row["date_heure"][11:16] for row in rows})
 
         regions_meta = {r["id"]: r["name"] for r in conn.execute("SELECT id, name FROM region")}
 
         consommations = {}
-        for row in conn.execute(
-            "SELECT fc.id_1 AS region_id, fc.consommation_mw "
-            "FROM fait_consommation fc "
-            "JOIN dim_temps dt ON dt.id_temps = fc.id_temps "
-            "WHERE fc.type_mesure = 'reference' AND dt.jour_relatif = 'reference_day' "
-            "ORDER BY fc.id_1, dt.step_index"
-        ):
-            consommations.setdefault(row["region_id"], []).append(row["consommation_mw"])
+        for row in rows:
+            consommations.setdefault(row["id_region"], []).append(row["consommation_mw"])
 
         regions = [
             {
@@ -294,31 +292,7 @@ def charger_journee_reference():
             for region_id, valeurs in consommations.items()
         ]
 
-        etat_t_moins_1 = {}
-        horodatage = None
-        jour_relatif = None
-        for row in conn.execute(
-            "SELECT fc.id_1 AS region_id, fc.consommation_mw, dt.heure, dt.jour_relatif "
-            "FROM fait_consommation fc "
-            "JOIN dim_temps dt ON dt.id_temps = fc.id_temps "
-            "WHERE fc.type_mesure = 'initial_t_moins_1'"
-        ):
-            horodatage = row["heure"]
-            jour_relatif = row["jour_relatif"]
-            etat_t_moins_1[row["region_id"]] = {
-                "name": regions_meta.get(row["region_id"], ""),
-                "consumption_mw": row["consommation_mw"],
-            }
-
-        return {
-            "timestamps": timestamps,
-            "regions": regions,
-            "initial_state_t_minus_1": {
-                "timestamp": horodatage,
-                "relative_day": jour_relatif,
-                "regions": etat_t_moins_1,
-            },
-        }
+        return {"timestamps": timestamps, "regions": regions}
     finally:
         conn.close()
 
@@ -550,17 +524,6 @@ def production_hors_nucleaire(production_solaire, production_eolien):
     return total_production
 
 # ---------------------------------------------------------------------------
-# 15. Récupération de la consommation initiales pour chaque région
-# ---------------------------------------------------------------------------
-def recuperer_consommations_initiales(donnees):
-    consommations_initiales = {}
-
-    for region_id, region in donnees["initial_state_t_minus_1"]["regions"].items():
-        consommations_initiales[region_id] = region["consumption_mw"]
-
-    return consommations_initiales
-
-# ---------------------------------------------------------------------------
 # 16. Récupération du la consommation par région en /4 d'heure
 # ---------------------------------------------------------------------------
 def recuperer_consommations_par_temps(donnees, index):
@@ -732,9 +695,9 @@ def appliquer_perturbation(region_id, heure, demande_mw, perturbations):
 # 26. Fonction qui retourne les besoins résiduels par région et par /4 d'heure
 # ------------------------------------------------------------------------------
 
-def get_besoins_solaires_eoliens():
+def get_besoins_solaires_eoliens(date_: str):
 
-    donnees_non_pilotables = charger_journee_reference_hors_nucleaire()
+    donnees_non_pilotables = charger_journee_reference_hors_nucleaire(date_)
 
     production_solaire = recuperer_donnees_solaires(
         donnees_non_pilotables
