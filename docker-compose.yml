@@ -26,7 +26,7 @@ services:
       - ./ollama_data:/root/.ollama
 # modèle chargement : docker exec -it energia_ollama ollama pull qwen2.5:7b
 
-  mcp-fastapi:
+  ms_mcp:
     build:
       context: .
       dockerfile: ms_mcp/Dockerfile
@@ -37,3 +37,48 @@ services:
       - "8003:8003"
     container_name: energia-mcp-fastapi
     restart: unless-stopped
+
+  ms-data:
+    build:
+      context: .
+    container_name: energia-ms-data
+    environment:
+      HOST: 0.0.0.0
+      PORT: 8004
+      # Sur le réseau docker-compose, on parle au service postgres par son nom.
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+    env_file:
+      - .env
+    ports:
+      - "${PORT:-8004}:8004"
+    volumes:
+      # analytics.db doit rester visible côté hôte : ms_dijkstra la lit
+      # directement depuis ms_data/data (chemin cross-service, hors docker).
+      - .ms_data/data:/app/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:17-alpine
+    container_name: energia-ms-data-postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-energia}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-energia}
+      POSTGRES_DB: ${POSTGRES_DB:-energia}
+    ports:
+      - "${POSTGRES_PORT:-5434}:5432"
+    volumes:
+      - ms_data_postgres:/var/lib/postgresql/data
+      - ./postgres/init:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-energia} -d ${POSTGRES_DB:-energia}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+volumes:
+  ms_data_postgres:
