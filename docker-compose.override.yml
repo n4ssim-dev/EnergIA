@@ -27,7 +27,7 @@ services:
       - ./gateway:/app
       - /app/node_modules
   
-  mcp-fastapi:
+  ms_mcp:
     container_name: energia-mcp-fastapi
     build:
       context: .
