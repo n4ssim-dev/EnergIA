@@ -194,7 +194,7 @@ async function getRegionsConsommationMax(req, res) {
     if (!heure || !jour_relatif) {
       return res.status(400).json({
         success: false,
-        message: "Les paramètres  heure, jour_relatif sont obligatoires",
+        message: "Les paramètres heure, jour_relatif sont obligatoires",
       });
     }
     
@@ -216,8 +216,6 @@ async function getRegionsConsommationMax(req, res) {
     });
   }
 }
-
-
 
 // Envoi de la requete region situation  à python-service 
 // avec les params region_id,heure,jour_relatif
