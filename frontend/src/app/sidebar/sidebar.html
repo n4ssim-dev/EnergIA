@@ -1,13 +1,72 @@
 <aside class="sidebar">
 
-    <div class="logo">
-        EnergIA
+  <!-- LOGO -->
+  <div class="sidebar-logo">
+    <div class="logo-icon">
+      ✦
     </div>
 
- <div class="card">
-        <h3> Chat</h3>
-        <a routerLink="/chat">
-            Nouveau chat
-        </a>
-</div>
+    <span>Energ<span>IA</span></span>
+  </div>
+
+
+  <!-- NOUVEAU CHAT -->
+  <section class="chat-section">
+
+    <div class="section-title">
+      CHAT
+    </div>
+
+    <a routerLink="/chat" class="new-chat">
+      <span class="material-icons">add</span>
+      <span>Nouveau chat</span>
+    </a>
+
+  </section>
+
+
+  <!-- SEPARATION -->
+  <div class="separator"></div>
+
+
+  <!-- MENU -->
+  <nav class="sidebar-menu">
+
+    <a routerLink="/home" routerLinkActive="active">
+      <span class="material-icons">dashboard</span>
+      <span>Tableau de bord</span>
+    </a>
+
+    <!-- <a href="#">
+      <span class="material-icons">history</span>
+      <span>Historique</span>
+    </a> -->
+
+    <!-- <a href="#">
+      <span class="material-icons">settings</span>
+      <span>Paramètres</span>
+    </a> -->
+
+    <!-- <a href="#">
+      <span class="material-icons">help_outline</span>
+      <span>Aide</span>
+    </a> -->
+
+  </nav>
+
+
+  <!-- BAS DU SIDEBAR -->
+  <div class="sidebar-bottom">
+
+    <div class="online-status">
+      <span></span>
+      Assistant en ligne
+    </div>
+
+    <div class="copyright">
+      © 2026 EnergIA
+    </div>
+
+  </div>
+
 </aside>
