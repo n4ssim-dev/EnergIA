@@ -24,7 +24,6 @@ services:
     container_name: energia_ollama
     ports:
       - "11435:11434"
-
     volumes:
       - ./ollama_data:/root/.ollama
 # modèle chargement : docker exec -it energia_ollama ollama pull qwen2.5:7b
