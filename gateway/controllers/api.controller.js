@@ -251,6 +251,40 @@ async function getRegionsSituation(req, res) {
   }
 }
 
+// Envoi de la requete normaliser à python-service 
+// avec le param question
+async function normaliser(req, res) {
+  try {
+    const {question} = req.query;
+
+    console.log("Paramètre reçu :", req.query);
+
+    if (!question) {
+      return res.status(400).json({
+        success: false,
+        message: "Le paramètre question est obligatoire",
+      });
+    }
+    
+    const reponse = await pythonService.normaliser(question);
+    
+    return res.status(200).json({
+      success: true,
+      message: "La demande a été envoyée à python-service",
+      reponse: reponse.data,
+    });
+  } catch (error) {
+    console.error("Code reçu :", error.response?.status);
+    console.error("Réponse reçue :", error.response?.data);
+    console.error("Message :", error.message);
+
+    return res.status(error.response?.status || 500).json({
+      success: false,
+      message: error.response?.data || error.message,
+    });
+  }
+}
+
 
 module.exports = {
   getCentrales,
@@ -261,5 +295,6 @@ module.exports = {
   getCentralesDisponibles,
   getRegionsConsommation,
   getRegionsConsommationMax,
-  getRegionsSituation
+  getRegionsSituation,
+  normaliser
 };
