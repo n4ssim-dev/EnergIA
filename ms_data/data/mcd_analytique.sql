@@ -21,74 +21,33 @@ CREATE TABLE filiere(
    PRIMARY KEY(code_filiere)
 );
 
-CREATE TABLE scenario_phase3(
-   id_scenario_phase3 VARCHAR(50),
-   name VARCHAR(50),
-   PRIMARY KEY(id_scenario_phase3)
-);
-
-CREATE TABLE fait_evenement_consommation(
-   id_evenement_consommation VARCHAR(50),
-   type VARCHAR(50),
-   delta_mw DECIMAL(15,2),
-   delta_percent DECIMAL(15,2),
-   debut VARCHAR(50) NOT NULL,
-   fin VARCHAR(50) NOT NULL,
-   id_scenario_phase3 VARCHAR(50) NOT NULL,
-   id VARCHAR(50) NOT NULL,
-   PRIMARY KEY(id_evenement_consommation),
-   FOREIGN KEY(id_scenario_phase3) REFERENCES scenario_phase3(id_scenario_phase3),
-   FOREIGN KEY(id) REFERENCES region(id)
-);
-
 -- Remplace l'ancien couple dim_temps/fait_consommation (profil de référence
--- synthétique) : consommation et mix de production réels par région,
--- ingérés manuellement par plage de dates depuis eco2mix-regional-tr.csv (RTE).
+-- synthétique) : consommation électrique réelle par région, plus solaire/éolien
+-- (seule production "non pilotable" utilisée par le calcul du besoin résiduel),
+-- ingérée manuellement par plage de dates depuis eco2mix-regional-tr.csv (RTE).
+-- Colonnes non retenues car hors périmètre "consommation électrique" ou non
+-- consommées par aucun endpoint : thermique/nucléaire/hydraulique/pompage/
+-- bioénergies/échanges physiques/stockage batterie, et les taux TCO/TCH.
 CREATE TABLE IF NOT EXISTS mesure_eco2mix_regionale(
    id_region VARCHAR(50),
    date_heure TIMESTAMP,
    nature VARCHAR(50),
    consommation_mw DECIMAL(15,2),
-   thermique_mw DECIMAL(15,2),
-   nucleaire_mw DECIMAL(15,2),
    eolien_mw DECIMAL(15,2),
    solaire_mw DECIMAL(15,2),
-   hydraulique_mw DECIMAL(15,2),
-   pompage_mw DECIMAL(15,2),
-   bioenergies_mw DECIMAL(15,2),
-   ech_physiques_mw DECIMAL(15,2),
-   stockage_batterie_mw DECIMAL(15,2),
-   destockage_batterie_mw DECIMAL(15,2),
-   tco_thermique DECIMAL(6,2),
-   tch_thermique DECIMAL(6,2),
-   tco_nucleaire DECIMAL(6,2),
-   tch_nucleaire DECIMAL(6,2),
-   tco_eolien DECIMAL(6,2),
-   tch_eolien DECIMAL(6,2),
-   tco_solaire DECIMAL(6,2),
-   tch_solaire DECIMAL(6,2),
-   tco_hydraulique DECIMAL(6,2),
-   tch_hydraulique DECIMAL(6,2),
-   tco_bioenergies DECIMAL(6,2),
-   tch_bioenergies DECIMAL(6,2),
    PRIMARY KEY(id_region, date_heure),
    FOREIGN KEY(id_region) REFERENCES region(id)
 );
 
--- Consommation brute électricité + gaz par région (ODRE, dataset
+-- Consommation brute électricité par région (ODRE, dataset
 -- consommation-quotidienne-brute-regionale), même ingestion manuelle par
--- plage de dates, via l'API paginée (pas d'export JSON brut global).
+-- plage de dates, via l'API paginée (pas d'export JSON brut global). Le gaz
+-- (grtgaz/terega) est hors périmètre "consommation électrique" et non retenu.
 CREATE TABLE IF NOT EXISTS mesure_consommation_brute_regionale(
    id_region VARCHAR(50),
    date_heure TIMESTAMP,
-   consommation_brute_gaz_grtgaz DECIMAL(15,2),
-   statut_grtgaz VARCHAR(20),
-   consommation_brute_gaz_terega DECIMAL(15,2),
-   statut_terega VARCHAR(20),
-   consommation_brute_gaz_totale DECIMAL(15,2),
    consommation_brute_electricite_rte DECIMAL(15,2),
    statut_rte VARCHAR(20),
-   consommation_brute_totale DECIMAL(15,2),
    flag_ignore VARCHAR(10),
    PRIMARY KEY(id_region, date_heure),
    FOREIGN KEY(id_region) REFERENCES region(id)

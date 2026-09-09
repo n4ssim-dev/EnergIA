@@ -4,7 +4,7 @@
 ROUTES_CATALOG = [
     {
         "chemin": "/centrales", "methode": "GET", "fichier_source": "api.py",
-        "description": "Liste des centrales (datastore, chargé depuis analytics.db)",
+        "description": "Liste des centrales (datastore, chargé depuis relationnal.db)",
         "auth": True, "parametres": [],
     },
     {
@@ -27,13 +27,13 @@ ROUTES_CATALOG = [
     {
         "chemin": "/database/ingest", "methode": "POST", "fichier_source": "ms_data/routes/database.py",
         "description": "Recrée le schéma et réingère tous les JSON de ms_dijkstra/data "
-        "(et le catalogue de routes) dans analytics.db et Postgres",
+        "(et le catalogue de routes) dans relationnal.db et Postgres",
         "auth": True, "parametres": [],
     },
     {
         "chemin": "/database/ingest-eco2mix", "methode": "POST", "fichier_source": "ms_data/routes/database.py",
         "description": "Ingestion manuelle, par plage de dates, de eco2mix-regional-tr.csv (RTE) "
-        "dans mesure_eco2mix_regionale (analytics.db et Postgres)",
+        "dans mesure_eco2mix_regionale (relationnal.db et Postgres)",
         "auth": True,
         "parametres": [
             {"nom": "date_debut", "emplacement": "query", "type": "str", "requis": True},
@@ -44,7 +44,7 @@ ROUTES_CATALOG = [
         "chemin": "/database/ingest-consommation-brute", "methode": "POST", "fichier_source": "ms_data/routes/database.py",
         "description": "Ingestion manuelle, par plage de dates, du dataset ODRE "
         "consommation-quotidienne-brute-regionale (API paginée) dans "
-        "mesure_consommation_brute_regionale (analytics.db et Postgres)",
+        "mesure_consommation_brute_regionale (relationnal.db et Postgres)",
         "auth": True,
         "parametres": [
             {"nom": "date_debut", "emplacement": "query", "type": "str", "requis": True},
@@ -53,7 +53,7 @@ ROUTES_CATALOG = [
     },
     {
         "chemin": "/dijkstra/load-datastore", "methode": "GET", "fichier_source": "dijkstra.py",
-        "description": "Recharge le datastore mémoire depuis analytics.db", "auth": True, "parametres": [],
+        "description": "Recharge le datastore mémoire depuis relationnal.db", "auth": True, "parametres": [],
     },
     {
         "chemin": "/dijkstra/rapport", "methode": "GET", "fichier_source": "dijkstra.py",
@@ -194,8 +194,6 @@ ROUTES_CATALOG = [
 TABLES = [
     "parametre_route",
     "route",
-    "fait_evenement_consommation",
-    "scenario_phase3",
     "scenario_override",
     "scenario",
     "accessible_via",

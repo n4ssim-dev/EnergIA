@@ -2,6 +2,7 @@ import csv
 import json
 import os
 import sqlite3
+from datetime import date, timedelta
 from pathlib import Path
 
 import httpx
@@ -18,11 +19,16 @@ ODRE_CONSOMMATION_BRUTE_URL = (
     "consommation-quotidienne-brute-regionale/records"
 )
 ODRE_PAGE_SIZE = 100
+# L'API v2.1 d'opendatasoft refuse offset + limit > 10 000. Avec 12 régions x
+# 48 pas de 30 min/jour (576 lignes/jour), 14 jours reste large sous ce
+# plafond (8 064 lignes) : on découpe donc la plage demandée en tranches de
+# ODRE_CHUNK_DAYS jours, chacune paginée indépendamment (offset repart à 0).
+ODRE_CHUNK_DAYS = 14
 
-# analytics.db est désormais la source lue par ms_dijkstra (graph/datastore.py)
+# relationnal.db est désormais la source lue par ms_dijkstra (graph/datastore.py)
 # via un chemin cross-service vers ms_data/data.
 DATA_DIR = Path(__file__).parent.parent / "data"
-DB_PATH = DATA_DIR / "analytics.db"
+DB_PATH = DATA_DIR / "relationnal.db"
 SCHEMA_PATH = DATA_DIR / "mcd_analytique.sql"
 # Même fichier que celui monté dans le conteneur Postgres pour le bootstrap
 # initial (docker-entrypoint-initdb.d) : voir postgres/docker-compose.yml.
@@ -82,7 +88,7 @@ def reset_postgres_schema(pg_conn):
 
 
 def mirror_to_postgres(sqlite_conn):
-    """Copie le contenu de analytics.db (déjà ingéré) vers Postgres, table par
+    """Copie le contenu de relationnal.db (déjà ingéré) vers Postgres, table par
     table, dans l'ordre inverse de TABLES (parents avant enfants) pour
     respecter les contraintes de clé étrangère."""
     pg_conn = get_postgres_connection()
@@ -307,37 +313,6 @@ def ingest_capacite_installee_non_pilotable(conn):
     return {"capacitee_instalee_non_pilotable": capacite_id}
 
 
-def ingest_scenarios_phase3(conn):
-    raw = _load("energia-scenarios-phase3-exemples.json")
-
-    event_count = 0
-    for s in raw.get("scenarios", []):
-        conn.execute(
-            "INSERT INTO scenario_phase3 (id_scenario_phase3, name) VALUES (?, ?)",
-            (s["id"], s.get("name")),
-        )
-        for i, event in enumerate(s.get("events", [])):
-            event_count += 1
-            conn.execute(
-                """
-                INSERT INTO fait_evenement_consommation (
-                    id_evenement_consommation, type, delta_mw, delta_percent,
-                    debut, fin, id_scenario_phase3, id
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    f"{s['id']}#{i}", event.get("type"), event.get("delta_mw"),
-                    event.get("delta_percent"), event.get("start"), event.get("end"),
-                    s["id"], event["region_id"],
-                ),
-            )
-
-    return {
-        "scenario_phase3": len(raw.get("scenarios", [])),
-        "fait_evenement_consommation": event_count,
-    }
-
-
 def ingest_routes(conn):
     """Peuple route/parametre_route depuis ROUTES_CATALOG."""
     route_id = 0
@@ -378,7 +353,6 @@ def run_ingestion():
         summary.update(ingest_data_json(conn))
         summary.update(ingest_nuclear_temporal_params(conn))
         summary.update(ingest_capacite_installee_non_pilotable(conn))
-        summary.update(ingest_scenarios_phase3(conn))
         summary.update(ingest_routes(conn))
         conn.commit()
         mirror_to_postgres(conn)
@@ -416,41 +390,19 @@ def _upsert_postgres(table, columns, key_columns, rows):
         pg_conn.close()
 
 
-MESURE_ECO2MIX_COLUMNS = [
-    "id_region", "date_heure", "nature", "consommation_mw", "thermique_mw",
-    "nucleaire_mw", "eolien_mw", "solaire_mw", "hydraulique_mw", "pompage_mw",
-    "bioenergies_mw", "ech_physiques_mw", "stockage_batterie_mw",
-    "destockage_batterie_mw", "tco_thermique", "tch_thermique", "tco_nucleaire",
-    "tch_nucleaire", "tco_eolien", "tch_eolien", "tco_solaire", "tch_solaire",
-    "tco_hydraulique", "tch_hydraulique", "tco_bioenergies", "tch_bioenergies",
-]
+# Colonnes retenues côté eco2mix : consommation électrique + solaire/éolien
+# (seule production "non pilotable" utilisée par le calcul du besoin résiduel).
+# Thermique/nucléaire/hydraulique/pompage/bioénergies/échanges physiques/
+# stockage batterie et les taux TCO/TCH sont hors périmètre et non consommés
+# par aucun endpoint : volontairement pas ingérés.
+MESURE_ECO2MIX_COLUMNS = ["id_region", "date_heure", "nature", "consommation_mw", "eolien_mw", "solaire_mw"]
 
-# Colonnes -> en-têtes du CSV eco2mix-regional-tr.csv (pour les colonnes MW/%,
+# Colonnes -> en-têtes du CSV eco2mix-regional-tr.csv (pour les colonnes MW,
 # id_region/date_heure/nature sont dérivées séparément).
 _ECO2MIX_CSV_FIELD_MAP = {
     "consommation_mw": "Consommation (MW)",
-    "thermique_mw": "Thermique (MW)",
-    "nucleaire_mw": "Nucléaire (MW)",
     "eolien_mw": "Eolien (MW)",
     "solaire_mw": "Solaire (MW)",
-    "hydraulique_mw": "Hydraulique (MW)",
-    "pompage_mw": "Pompage (MW)",
-    "bioenergies_mw": "Bioénergies (MW)",
-    "ech_physiques_mw": "Ech. physiques (MW)",
-    "stockage_batterie_mw": "Stockage batterie",
-    "destockage_batterie_mw": "Déstockage batterie",
-    "tco_thermique": "TCO Thermique (%)",
-    "tch_thermique": "TCH Thermique (%)",
-    "tco_nucleaire": "TCO Nucléaire (%)",
-    "tch_nucleaire": "TCH Nucléaire (%)",
-    "tco_eolien": "TCO Eolien (%)",
-    "tch_eolien": "TCH Eolien (%)",
-    "tco_solaire": "TCO Solaire (%)",
-    "tch_solaire": "TCH Solaire (%)",
-    "tco_hydraulique": "TCO Hydraulique (%)",
-    "tch_hydraulique": "TCH Hydraulique (%)",
-    "tco_bioenergies": "TCO Bioénergies (%)",
-    "tch_bioenergies": "TCH Bioénergies (%)",
 }
 
 
@@ -480,7 +432,7 @@ def _read_eco2mix_rows(region_ids, date_debut, date_fin):
 def ingest_eco2mix_regionale(conn, date_debut, date_fin):
     """Ingestion manuelle, par plage de dates incluse (YYYY-MM-DD), depuis
     eco2mix-regional-tr.csv (RTE). Idempotent : upsert sur (id_region, date_heure),
-    aussi bien côté analytics.db que Postgres."""
+    aussi bien côté relationnal.db que Postgres."""
     region_ids = _region_ids_by_insee(conn)
     rows = list(_read_eco2mix_rows(region_ids, date_debut, date_fin))
 
@@ -499,40 +451,57 @@ def ingest_eco2mix_regionale(conn, date_debut, date_fin):
     return {"mesure_eco2mix_regionale": len(rows)}
 
 
+# Gaz (grtgaz/terega) hors périmètre "consommation électrique" : non retenu.
 MESURE_CONSOMMATION_BRUTE_COLUMNS = [
-    "id_region", "date_heure", "consommation_brute_gaz_grtgaz", "statut_grtgaz",
-    "consommation_brute_gaz_terega", "statut_terega", "consommation_brute_gaz_totale",
-    "consommation_brute_electricite_rte", "statut_rte", "consommation_brute_totale",
+    "id_region", "date_heure", "consommation_brute_electricite_rte", "statut_rte",
     "flag_ignore",
 ]
 
 
+def _date_chunks(date_debut, date_fin, chunk_days=ODRE_CHUNK_DAYS):
+    """Découpe [date_debut, date_fin] (YYYY-MM-DD, incluses) en tranches
+    contiguës d'au plus chunk_days jours."""
+    debut = date.fromisoformat(date_debut)
+    fin = date.fromisoformat(date_fin)
+    while debut <= fin:
+        chunk_fin = min(debut + timedelta(days=chunk_days - 1), fin)
+        yield debut.isoformat(), chunk_fin.isoformat()
+        debut = chunk_fin + timedelta(days=1)
+
+
+def _fetch_odre_records_chunk(client, chunk_debut, chunk_fin):
+    where = f"date in [date'{chunk_debut}'..date'{chunk_fin}']"
+    offset = 0
+    while True:
+        response = client.get(
+            ODRE_CONSOMMATION_BRUTE_URL,
+            params={"where": where, "limit": ODRE_PAGE_SIZE, "offset": offset},
+        )
+        response.raise_for_status()
+        results = response.json().get("results", [])
+        if not results:
+            return
+        yield from results
+        if len(results) < ODRE_PAGE_SIZE:
+            return
+        offset += ODRE_PAGE_SIZE
+
+
 def _fetch_odre_records(date_debut, date_fin):
     """Parcourt l'API paginée (v2.1 /records) du dataset ODRE
-    consommation-quotidienne-brute-regionale, par lots de ODRE_PAGE_SIZE
-    (pas d'export JSON brut global)."""
-    where = f"date in [date'{date_debut}'..date'{date_fin}']"
-    offset = 0
+    consommation-quotidienne-brute-regionale, par lots de ODRE_PAGE_SIZE,
+    en découpant la plage en tranches de ODRE_CHUNK_DAYS jours pour rester
+    sous le plafond offset+limit <= 10 000 de l'API (pas d'export JSON brut
+    global)."""
     with httpx.Client(timeout=30.0) as client:
-        while True:
-            response = client.get(
-                ODRE_CONSOMMATION_BRUTE_URL,
-                params={"where": where, "limit": ODRE_PAGE_SIZE, "offset": offset},
-            )
-            response.raise_for_status()
-            results = response.json().get("results", [])
-            if not results:
-                return
-            yield from results
-            if len(results) < ODRE_PAGE_SIZE:
-                return
-            offset += ODRE_PAGE_SIZE
+        for chunk_debut, chunk_fin in _date_chunks(date_debut, date_fin):
+            yield from _fetch_odre_records_chunk(client, chunk_debut, chunk_fin)
 
 
 def ingest_consommation_brute_regionale(conn, date_debut, date_fin):
     """Ingestion manuelle, par plage de dates incluse (YYYY-MM-DD), depuis
     l'API ODRE consommation-quotidienne-brute-regionale. Idempotent : upsert
-    sur (id_region, date_heure), aussi bien côté analytics.db que Postgres."""
+    sur (id_region, date_heure), aussi bien côté relationnal.db que Postgres."""
     region_ids = _region_ids_by_insee(conn)
     rows = []
     for record in _fetch_odre_records(date_debut, date_fin):
@@ -541,11 +510,8 @@ def ingest_consommation_brute_regionale(conn, date_debut, date_fin):
             continue
         rows.append((
             id_region, record.get("date_heure"),
-            record.get("consommation_brute_gaz_grtgaz"), record.get("statut_grtgaz"),
-            record.get("consommation_brute_gaz_terega"), record.get("statut_terega"),
-            record.get("consommation_brute_gaz_totale"),
             record.get("consommation_brute_electricite_rte"), record.get("statut_rte"),
-            record.get("consommation_brute_totale"), record.get("flag_ignore"),
+            record.get("flag_ignore"),
         ))
 
     conn.executemany(

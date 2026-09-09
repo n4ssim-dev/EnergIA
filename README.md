@@ -735,7 +735,7 @@ Format de sortie :
 
 ## Catalogue dynamique des routes
 
-Les routes disponibles dans EnergIA sont enregistrées dans la base `analytics.db`.
+Les routes disponibles dans EnergIA sont enregistrées dans la base `relationnal.db`.
 
 Le MCP utilise ce catalogue afin d'éviter de maintenir manuellement une liste de routes dans le prompt Ollama.
 
@@ -958,7 +958,7 @@ GET	/analytics/regions/consommation/max
 GET	/analytics/regions/{region_id}
 ```
 
-Le catalogue présent dans `analytics.db` constitue la source de référence pour les routes disponibles.
+Le catalogue présent dans `relationnal.db` constitue la source de référence pour les routes disponibles.
 
 ---
 
@@ -978,7 +978,7 @@ MCP FastAPI
 Ollama
       ↓
 API / moteur EnergIA
-  └── catalogue analytics.db
+  └── catalogue relationnal.db
 ```
 
 Lorsque deux services se trouvent dans des conteneurs différents du même réseau Docker Compose, ils communiquent avec le nom du service Docker.

@@ -214,7 +214,7 @@ def calcul_distance_region(region_data, central):
     return (result)
 
 # ---------------------------------------------------------------------------
-# 11. Chargement depuis analytics.db (reconstruit la forme des anciens JSON,
+# 11. Chargement depuis relationnal.db (reconstruit la forme des anciens JSON,
 #     pour ne rien changer aux fonctions/routes qui consomment ces données)
 # ---------------------------------------------------------------------------
 def charger_journee_reference_hors_nucleaire(date_: str):

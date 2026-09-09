@@ -1,7 +1,7 @@
 [project]
 name = "ms-data"
 version = "0.1.0"
-description = "Service FastAPI EnergIA — ETL + Postgres (analytics.db mirroré vers ms-data-postgres)"
+description = "Service FastAPI EnergIA — ETL + Postgres (relationnal.db mirroré vers ms-data-postgres)"
 readme = "README.md"
 authors = [
     { name = "Nassim", email = "achnassim34@gmail.com" }

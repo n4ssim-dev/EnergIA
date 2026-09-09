@@ -57,7 +57,7 @@ services:
     ports:
       - "${PORT:-8004}:8004"
     volumes:
-      # analytics.db doit rester visible côté hôte : ms_dijkstra la lit
+      # relationnal.db doit rester visible côté hôte : ms_dijkstra la lit
       # directement depuis ms_data/data (chemin cross-service, hors docker).
       - ./ms_data/data:/app/data
     depends_on:

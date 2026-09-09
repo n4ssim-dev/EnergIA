@@ -11,7 +11,3 @@ app.include_router(router=datastore_router)
 @app.get("/health")
 def health():
     return {"status": "healthy"}
-
-@app.get("/")
-def home():
-    return {"message": "Microservice Data EnergIA"}
