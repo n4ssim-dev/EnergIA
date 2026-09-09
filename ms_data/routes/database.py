@@ -2,6 +2,7 @@ import csv
 import json
 import os
 import sqlite3
+from concurrent.futures import ThreadPoolExecutor
 from datetime import date, timedelta
 from pathlib import Path
 
@@ -24,6 +25,14 @@ ODRE_PAGE_SIZE = 100
 # plafond (8 064 lignes) : on découpe donc la plage demandée en tranches de
 # ODRE_CHUNK_DAYS jours, chacune paginée indépendamment (offset repart à 0).
 ODRE_CHUNK_DAYS = 14
+# L'API refuse aussi limit > 100 (confirmé : 400 InvalidRESTParameterError au
+# delà). Avec ce plafond fixe, la seule façon d'accélérer une plage large
+# (une année ~= 2 200 requêtes) est de paralléliser les pages plutôt que de
+# les attendre une par une.
+ODRE_MAX_CONCURRENCY = 8
+# Grille fixe du dataset : régions RTE métropole (hors Corse) x pas de 30 min.
+ODRE_REGIONS_COUNT = 12
+ODRE_SLOTS_PER_DAY = 48
 
 # relationnal.db est désormais la source lue par ms_dijkstra (graph/datastore.py)
 # via un chemin cross-service vers ms_data/data.
@@ -469,33 +478,50 @@ def _date_chunks(date_debut, date_fin, chunk_days=ODRE_CHUNK_DAYS):
         debut = chunk_fin + timedelta(days=1)
 
 
-def _fetch_odre_records_chunk(client, chunk_debut, chunk_fin):
-    where = f"date in [date'{chunk_debut}'..date'{chunk_fin}']"
-    offset = 0
-    while True:
-        response = client.get(
-            ODRE_CONSOMMATION_BRUTE_URL,
-            params={"where": where, "limit": ODRE_PAGE_SIZE, "offset": offset},
-        )
-        response.raise_for_status()
-        results = response.json().get("results", [])
-        if not results:
-            return
-        yield from results
-        if len(results) < ODRE_PAGE_SIZE:
-            return
-        offset += ODRE_PAGE_SIZE
+def _expected_page_count(chunk_debut, chunk_fin):
+    """Nombre de pages à interroger pour couvrir une tranche, en se basant sur
+    la grille fixe du dataset (régions x pas de 30 min/jour). +2 pages de
+    marge pour absorber un léger écart (ex: un pas manquant) sans tronquer."""
+    jours = (date.fromisoformat(chunk_fin) - date.fromisoformat(chunk_debut)).days + 1
+    lignes_attendues = jours * ODRE_REGIONS_COUNT * ODRE_SLOTS_PER_DAY
+    return lignes_attendues // ODRE_PAGE_SIZE + 2
+
+
+def _fetch_odre_page(client, where, offset):
+    # order_by explicite : sans lui, le tri par défaut n'est pas garanti
+    # stable entre deux appels offset différents faits en parallèle, ce qui
+    # peut faire apparaître la même ligne sur deux pages (constaté : quelques
+    # doublons sur une plage d'un an sans order_by). INSERT OR REPLACE
+    # dédoublonne de toute façon sur (id_region, date_heure), mais autant
+    # avoir une pagination correcte à la source.
+    response = client.get(
+        ODRE_CONSOMMATION_BRUTE_URL,
+        params={
+            "where": where, "limit": ODRE_PAGE_SIZE, "offset": offset,
+            "order_by": "date_heure,code_insee_region",
+        },
+    )
+    response.raise_for_status()
+    return response.json().get("results", [])
 
 
 def _fetch_odre_records(date_debut, date_fin):
     """Parcourt l'API paginée (v2.1 /records) du dataset ODRE
-    consommation-quotidienne-brute-regionale, par lots de ODRE_PAGE_SIZE,
-    en découpant la plage en tranches de ODRE_CHUNK_DAYS jours pour rester
-    sous le plafond offset+limit <= 10 000 de l'API (pas d'export JSON brut
-    global)."""
-    with httpx.Client(timeout=30.0) as client:
+    consommation-quotidienne-brute-regionale, en découpant la plage en
+    tranches de ODRE_CHUNK_DAYS jours (l'API refuse offset+limit > 10 000) et
+    en interrogeant les pages de chaque tranche EN PARALLÈLE (ODRE_MAX_CONCURRENCY
+    requêtes à la fois) plutôt qu'une par une : le nombre de pages par tranche
+    est déductible à l'avance de la grille fixe du dataset, donc pas besoin
+    d'attendre une page pour savoir combien en demander ensuite. Pas d'export
+    JSON brut global : uniquement l'API paginée."""
+    with httpx.Client(timeout=30.0) as client, ThreadPoolExecutor(max_workers=ODRE_MAX_CONCURRENCY) as pool:
+        futures = []
         for chunk_debut, chunk_fin in _date_chunks(date_debut, date_fin):
-            yield from _fetch_odre_records_chunk(client, chunk_debut, chunk_fin)
+            where = f"date in [date'{chunk_debut}'..date'{chunk_fin}']"
+            for offset in range(0, _expected_page_count(chunk_debut, chunk_fin) * ODRE_PAGE_SIZE, ODRE_PAGE_SIZE):
+                futures.append(pool.submit(_fetch_odre_page, client, where, offset))
+        for future in futures:
+            yield from future.result()
 
 
 def ingest_consommation_brute_regionale(conn, date_debut, date_fin):
