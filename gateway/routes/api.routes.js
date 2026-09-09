@@ -19,4 +19,7 @@ router.get("/consommation-region-max", apiController.getRegionsConsommationMax);
 
 router.get("/region-situation", apiController.getRegionsSituation);
 
+router.get("/normaliser", apiController.normaliser);
+
+
 module.exports = router;
