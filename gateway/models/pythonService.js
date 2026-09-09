@@ -2,6 +2,10 @@ const axios = require("axios");
 
 const PYTHON_SERVICE_URL = "http://energia-api:8000";  
 //const PYTHON_SERVICE_URL = "http://127.0.0.1:8000"; 
+
+const MCP_FASTAPI_SERVICE_URL = "http://energia-mcp-fastapi:8003"; 
+//const MCP_FASTAPI_SERVICE_URL = "http://127.0.0.1:8001";  
+
 const AUTH_HEADERS = { "x-password": "5" };
 
 function getCentrales() {
@@ -82,6 +86,10 @@ function getRegionsSituation(region_id,heure,jour_relatif) {
   });
 }
 
+  function normaliser(question) {
+   return axios.get(`${MCP_FASTAPI_SERVICE_URL}/normaliser`, { params: { question }, 
+    headers: AUTH_HEADERS, }); 
+  }
 module.exports = {
   getCentrales,
   getRegions,
@@ -91,5 +99,6 @@ module.exports = {
   getCentralesDisponibles,
   getRegionsConsommation,
   getRegionsConsommationMax,
-  getRegionsSituation
+  getRegionsSituation,
+  normaliser
 };

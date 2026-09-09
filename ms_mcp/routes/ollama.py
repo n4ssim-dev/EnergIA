@@ -7,10 +7,16 @@ from fastapi import APIRouter, HTTPException
 router = APIRouter()
 
 OLLAMA_URL = "http://langage:11434"
+#OLLAMA_URL = "http://localhost:11434"
 OLLAMA_MODEL = "qwen2.5:7b"
 
 MS_MCP_URL = "http://mcp-fastapi:8003"
 API_URL = "http://python-service:8000"
+
+# MS_MCP_URL = "http://127.0.0.1:8001"
+# API_URL = "http://127.0.0.1:8000"
+
+
 API_PASSWORD = os.getenv("API_PASSWORD", "5")
 
 
@@ -36,16 +42,14 @@ async def appeler_ollama(prompt: str, *, timeout: float) -> str:
         response.raise_for_status()
     except httpx.HTTPError as erreur:
         raise HTTPException(
-            status_code=502,
-            detail=f"Erreur lors de l'appel à Ollama : {erreur}"
+            status_code=502, detail=f"Erreur lors de l'appel à Ollama : {erreur}"
         )
 
     texte = response.json().get("response")
 
     if not texte:
         raise HTTPException(
-            status_code=502,
-            detail="Ollama n'a retourné aucune réponse"
+            status_code=502, detail="Ollama n'a retourné aucune réponse"
         )
 
     return texte
@@ -94,15 +98,16 @@ async def normaliser_question(question: str):
     except ValueError:
         raise HTTPException(
             status_code=502,
-            detail="La réponse d'Ollama (mots-clés) n'est pas un JSON valide"
+            detail="La réponse d'Ollama (mots-clés) n'est pas un JSON valide",
         )
 
-    mots_cles = [m.lower().strip() for m in mots_cles if isinstance(m, str) and m.strip()]
+    mots_cles = [
+        m.lower().strip() for m in mots_cles if isinstance(m, str) and m.strip()
+    ]
 
     if not mots_cles:
         raise HTTPException(
-            status_code=422,
-            detail="Aucun mot-clé n'a pu être extrait de la question"
+            status_code=422, detail="Aucun mot-clé n'a pu être extrait de la question"
         )
 
     # --------------------------------------------------
@@ -125,7 +130,7 @@ async def normaliser_question(question: str):
     if not routes_correspondantes:
         raise HTTPException(
             status_code=404,
-            detail=f"Aucune route ne correspond aux mots-clés {mots_cles}"
+            detail=f"Aucune route ne correspond aux mots-clés {mots_cles}",
         )
 
     # --------------------------------------------------
@@ -149,11 +154,13 @@ async def normaliser_question(question: str):
                 except ValueError:
                     donnees = reponse.text
 
-                resultats.append({
-                    "route": chemin,
-                    "status": reponse.status_code,
-                    "donnees": donnees,
-                })
+                resultats.append(
+                    {
+                        "route": chemin,
+                        "status": reponse.status_code,
+                        "donnees": donnees,
+                    }
+                )
             except httpx.HTTPError as erreur:
                 resultats.append({"route": chemin, "erreur": str(erreur)})
 
@@ -169,7 +176,10 @@ async def normaliser_question(question: str):
     TAILLE_MAX_PAR_ROUTE = 800
     lignes = []
     for r in resultats:
-        texte = json.dumps(tronquer_listes(r.get("donnees", r.get("erreur")), max_elements=2), ensure_ascii=False)
+        texte = json.dumps(
+            tronquer_listes(r.get("donnees", r.get("erreur")), max_elements=2),
+            ensure_ascii=False,
+        )
         if len(texte) > TAILLE_MAX_PAR_ROUTE:
             texte = texte[:TAILLE_MAX_PAR_ROUTE] + "... (tronqué)"
         lignes.append(f"- {r['route']} : {texte}")

@@ -430,6 +430,7 @@ dependencies = [
     { name = "asyncio" },
     { name = "fastapi", extra = ["standard"] },
     { name = "starlette" },
+    { name = "uvicorn", extra = ["standard"] },
 ]
 
 [package.metadata]
@@ -437,6 +438,7 @@ requires-dist = [
     { name = "asyncio", specifier = ">=4.0.0" },
     { name = "fastapi", extras = ["standard"], specifier = ">=0.141.1" },
     { name = "starlette", specifier = ">=1.6.0" },
+    { name = "uvicorn", extras = ["standard"], specifier = ">=0.52.4" },
 ]
 
 [[package]]
