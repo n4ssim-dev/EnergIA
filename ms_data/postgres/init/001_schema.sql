@@ -1,6 +1,8 @@
 -- Schéma Postgres pour la base analytics, miroir de ms_dijkstra/data/mcd_analytique.sql
--- (LOGICAL -> BOOLEAN, seul changement de dialecte). À garder synchronisé avec
--- ms_etl/data/postgres_schema.sql, ré-exécuté à chaque ingestion.
+-- (LOGICAL -> BOOLEAN, seul changement de dialecte). L'ETL (extraction +
+-- chargement + mirroir Postgres) vit dans ms_data lui-même (routes/database.py),
+-- il n'existe pas de service ms_etl séparé : ce fichier est ré-exécuté (DROP
+-- + CREATE des tables de catalog.TABLES) à chaque appel à /database/ingest*.
 
 CREATE TABLE region(
    id VARCHAR(50),
@@ -25,58 +27,36 @@ CREATE TABLE filiere(
    PRIMARY KEY(code_filiere)
 );
 
-CREATE TABLE dim_temps(
-   id_temps VARCHAR(50),
-   step_index INT,
-   jour_relatif VARCHAR(50),
-   heure TIME,
-   date_ DATE,
-   PRIMARY KEY(id_temps)
-);
-
-CREATE TABLE scenario_phase3(
-   id_scenario_phase3 VARCHAR(50),
-   name VARCHAR(50),
-   PRIMARY KEY(id_scenario_phase3)
-);
-
-CREATE TABLE fait_evenement_consommation(
-   id_evenement_consommation VARCHAR(50),
-   type VARCHAR(50),
-   delta_mw DECIMAL(15,2),
-   delta_percent DECIMAL(15,2),
-   id_scenario_phase3 VARCHAR(50) NOT NULL,
-   id VARCHAR(50) NOT NULL,
-   id_temps VARCHAR(50) NOT NULL,
-   id_temps_1 VARCHAR(50) NOT NULL,
-   PRIMARY KEY(id_evenement_consommation),
-   FOREIGN KEY(id_scenario_phase3) REFERENCES scenario_phase3(id_scenario_phase3),
-   FOREIGN KEY(id) REFERENCES region(id),
-   FOREIGN KEY(id_temps) REFERENCES dim_temps(id_temps),
-   FOREIGN KEY(id_temps_1) REFERENCES dim_temps(id_temps)
-);
-
-CREATE TABLE fait_consommation(
-   id VARCHAR(50),
+-- Remplace l'ancien couple dim_temps/fait_consommation (profil de référence
+-- synthétique) : consommation électrique réelle par région, plus solaire/éolien
+-- (seule production "non pilotable" utilisée par le calcul du besoin résiduel),
+-- ingérée manuellement par plage de dates depuis eco2mix-regional-tr.csv (RTE).
+-- Colonnes non retenues car hors périmètre "consommation électrique" ou non
+-- consommées par aucun endpoint : thermique/nucléaire/hydraulique/pompage/
+-- bioénergies/échanges physiques/stockage batterie, et les taux TCO/TCH.
+CREATE TABLE IF NOT EXISTS mesure_eco2mix_regionale(
+   id_region VARCHAR(50),
+   date_heure TIMESTAMP,
+   nature VARCHAR(50),
    consommation_mw DECIMAL(15,2),
-   type_mesure VARCHAR(50),
-   id_temps VARCHAR(50) NOT NULL,
-   id_1 VARCHAR(50) NOT NULL,
-   PRIMARY KEY(id),
-   FOREIGN KEY(id_temps) REFERENCES dim_temps(id_temps),
-   FOREIGN KEY(id_1) REFERENCES region(id)
+   eolien_mw DECIMAL(15,2),
+   solaire_mw DECIMAL(15,2),
+   PRIMARY KEY(id_region, date_heure),
+   FOREIGN KEY(id_region) REFERENCES region(id)
 );
 
-CREATE TABLE fait_production_non_pilotable(
-   id VARCHAR(50),
-   production_mw DECIMAL(15,2),
-   code_filiere VARCHAR(50) NOT NULL,
-   id_temps VARCHAR(50) NOT NULL,
-   id_1 VARCHAR(50) NOT NULL,
-   PRIMARY KEY(id),
-   FOREIGN KEY(code_filiere) REFERENCES filiere(code_filiere),
-   FOREIGN KEY(id_temps) REFERENCES dim_temps(id_temps),
-   FOREIGN KEY(id_1) REFERENCES region(id)
+-- Consommation brute électricité par région (ODRE, dataset
+-- consommation-quotidienne-brute-regionale), même ingestion manuelle par
+-- plage de dates, via l'API paginée (pas d'export JSON brut global). Le gaz
+-- (grtgaz/terega) est hors périmètre "consommation électrique" et non retenu.
+CREATE TABLE IF NOT EXISTS mesure_consommation_brute_regionale(
+   id_region VARCHAR(50),
+   date_heure TIMESTAMP,
+   consommation_brute_electricite_rte DECIMAL(15,2),
+   statut_rte VARCHAR(20),
+   flag_ignore VARCHAR(10),
+   PRIMARY KEY(id_region, date_heure),
+   FOREIGN KEY(id_region) REFERENCES region(id)
 );
 
 CREATE TABLE scenario(

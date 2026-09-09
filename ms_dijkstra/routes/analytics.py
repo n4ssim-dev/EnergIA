@@ -109,13 +109,32 @@ def centrales_disponibles():
         conn.close()
 
 
+# Colonnes de mesure_eco2mix_regionale portant la production "non pilotable"
+# (même périmètre que l'ancien fait_production_non_pilotable : solaire + éolien).
+FILIERE_NON_PILOTABLE_COLONNES = {"solar": "solaire_mw", "wind": "eolien_mw"}
+
+
+def _find_mesure_eco2mix(conn, region_id, date_: str, heure_normalisee: str):
+    """mesure_eco2mix_regionale.date_heure est un ISO datetime avec offset
+    (ex: 2026-07-01T00:00:00+02:00) : on matche sur le préfixe date+heure,
+    l'offset et les secondes n'ont pas besoin d'être connus de l'appelant."""
+    return conn.execute(
+        """
+        SELECT * FROM mesure_eco2mix_regionale
+        WHERE id_region = ? AND date_heure LIKE ?
+        """,
+        (region_id, f"{date_}T{heure_normalisee}:%"),
+    ).fetchone()
+
+
 @router.get("/regions/{region_id}/consommation")
 def consommation_region(
     region_id: str,
     heure: str = Query(..., description="Heure au format HH:MM ou '19h'"),
-    jour_relatif: str = Query("reference_day"),
+    date: str = Query(..., description="Date ingérée au format YYYY-MM-DD"),
 ):
-    """Consommation d'une région à un instant donné."""
+    """Consommation d'une région à un instant donné (mesure_eco2mix_regionale,
+    ingérée manuellement par plage de dates via POST /database/ingest-eco2mix)."""
     conn = get_connection()
     try:
         if find_region(conn, region_id) is None:
@@ -124,28 +143,19 @@ def consommation_region(
             )
 
         heure_normalisee = normalize_heure(heure)
-        id_temps = f"{jour_relatif}#{heure_normalisee}"
-
-        row = conn.execute(
-            """
-            SELECT consommation_mw, type_mesure
-            FROM fait_consommation
-            WHERE id_1 = ? AND id_temps = ?
-            """,
-            (region_id, id_temps),
-        ).fetchone()
+        row = _find_mesure_eco2mix(conn, region_id, date, heure_normalisee)
         if row is None:
             raise HTTPException(
                 status_code=404,
-                detail=f"Aucune donnée de consommation pour {region_id!r} à {heure_normalisee} ({jour_relatif})",
+                detail=f"Aucune donnée de consommation pour {region_id!r} à {heure_normalisee} ({date})",
             )
 
         return {
             "region_id": region_id,
-            "jour_relatif": jour_relatif,
+            "date": date,
             "heure": heure_normalisee,
             "consommation_mw": row["consommation_mw"],
-            "type_mesure": row["type_mesure"],
+            "nature": row["nature"],
         }
     finally:
         conn.close()
@@ -154,33 +164,31 @@ def consommation_region(
 @router.get("/regions/consommation/max")
 def region_consommation_max(
     heure: str = Query(..., description="Heure au format HH:MM ou '19h'"),
-    jour_relatif: str = Query("reference_day"),
+    date: str = Query(..., description="Date ingérée au format YYYY-MM-DD"),
 ):
     """Quelle région consomme le plus à une heure donnée ?"""
     conn = get_connection()
     try:
         heure_normalisee = normalize_heure(heure)
-        id_temps = f"{jour_relatif}#{heure_normalisee}"
-
         rows = conn.execute(
             """
-            SELECT fc.id_1 AS region_id, r.name AS region_name, fc.consommation_mw
-            FROM fait_consommation fc
-            JOIN region r ON r.id = fc.id_1
-            WHERE fc.id_temps = ?
-            ORDER BY fc.consommation_mw DESC
+            SELECT me.id_region AS region_id, r.name AS region_name, me.consommation_mw
+            FROM mesure_eco2mix_regionale me
+            JOIN region r ON r.id = me.id_region
+            WHERE me.date_heure LIKE ?
+            ORDER BY me.consommation_mw DESC
             """,
-            (id_temps,),
+            (f"{date}T{heure_normalisee}:%",),
         ).fetchall()
         if not rows:
             raise HTTPException(
                 status_code=404,
-                detail=f"Aucune donnée de consommation à {heure_normalisee} ({jour_relatif})",
+                detail=f"Aucune donnée de consommation à {heure_normalisee} ({date})",
             )
 
         top = rows[0]
         return {
-            "jour_relatif": jour_relatif,
+            "date": date,
             "heure": heure_normalisee,
             "region_id": top["region_id"],
             "region_name": top["region_name"],
@@ -195,7 +203,7 @@ def region_consommation_max(
 def situation_region(
     region_id: str,
     heure: str = Query(..., description="Heure au format HH:MM ou '18h'"),
-    jour_relatif: str = Query("reference_day"),
+    date: str = Query(..., description="Date ingérée au format YYYY-MM-DD"),
 ):
     """Situation énergétique d'une région à un instant donné : consommation,
     production non pilotable (solaire/éolien) et capacité installée associée."""
@@ -208,26 +216,7 @@ def situation_region(
             )
 
         heure_normalisee = normalize_heure(heure)
-        id_temps = f"{jour_relatif}#{heure_normalisee}"
-
-        consommation = conn.execute(
-            """
-            SELECT consommation_mw, type_mesure
-            FROM fait_consommation
-            WHERE id_1 = ? AND id_temps = ?
-            """,
-            (region_id, id_temps),
-        ).fetchone()
-
-        production_rows = conn.execute(
-            """
-            SELECT fp.code_filiere, f.libelle_filiere, fp.production_mw
-            FROM fait_production_non_pilotable fp
-            JOIN filiere f ON f.code_filiere = fp.code_filiere
-            WHERE fp.id_1 = ? AND fp.id_temps = ?
-            """,
-            (region_id, id_temps),
-        ).fetchall()
+        mesure = _find_mesure_eco2mix(conn, region_id, date, heure_normalisee)
 
         capacite_rows = conn.execute(
             """
@@ -239,23 +228,34 @@ def situation_region(
             (region_id,),
         ).fetchall()
 
-        if consommation is None and not production_rows:
+        if mesure is None:
             raise HTTPException(
                 status_code=404,
-                detail=f"Aucune donnée pour {region_id!r} à {heure_normalisee} ({jour_relatif})",
+                detail=f"Aucune donnée pour {region_id!r} à {heure_normalisee} ({date})",
             )
 
-        production_totale = sum(r["production_mw"] for r in production_rows)
-        consommation_mw = consommation["consommation_mw"] if consommation else None
+        libelles = dict(
+            conn.execute("SELECT code_filiere, libelle_filiere FROM filiere").fetchall()
+        )
+        production_par_filiere = [
+            {
+                "code_filiere": code_filiere,
+                "libelle_filiere": libelles.get(code_filiere),
+                "production_mw": mesure[colonne],
+            }
+            for code_filiere, colonne in FILIERE_NON_PILOTABLE_COLONNES.items()
+        ]
+        production_totale = sum(r["production_mw"] or 0 for r in production_par_filiere)
+        consommation_mw = mesure["consommation_mw"]
 
         return {
             "region_id": region_id,
             "region_name": region["name"],
-            "jour_relatif": jour_relatif,
+            "date": date,
             "heure": heure_normalisee,
             "consommation_mw": consommation_mw,
             "production_non_pilotable_mw": production_totale,
-            "production_par_filiere": [dict(r) for r in production_rows],
+            "production_par_filiere": production_par_filiere,
             "capacite_installee_non_pilotable": [dict(r) for r in capacite_rows],
             "solde_mw": (
                 production_totale - consommation_mw

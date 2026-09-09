@@ -4,7 +4,7 @@
 ROUTES_CATALOG = [
     {
         "chemin": "/centrales", "methode": "GET", "fichier_source": "api.py",
-        "description": "Liste des centrales (datastore, chargé depuis analytics.db)",
+        "description": "Liste des centrales (datastore, chargé depuis relationnal.db)",
         "auth": True, "parametres": [],
     },
     {
@@ -27,12 +27,33 @@ ROUTES_CATALOG = [
     {
         "chemin": "/database/ingest", "methode": "POST", "fichier_source": "ms_data/routes/database.py",
         "description": "Recrée le schéma et réingère tous les JSON de ms_dijkstra/data "
-        "(et le catalogue de routes) dans analytics.db et Postgres",
+        "(et le catalogue de routes) dans relationnal.db et Postgres",
         "auth": True, "parametres": [],
     },
     {
+        "chemin": "/database/ingest-eco2mix", "methode": "POST", "fichier_source": "ms_data/routes/database.py",
+        "description": "Ingestion manuelle, par plage de dates, de eco2mix-regional-tr.csv (RTE) "
+        "dans mesure_eco2mix_regionale (relationnal.db et Postgres)",
+        "auth": True,
+        "parametres": [
+            {"nom": "date_debut", "emplacement": "query", "type": "str", "requis": True},
+            {"nom": "date_fin", "emplacement": "query", "type": "str", "requis": True},
+        ],
+    },
+    {
+        "chemin": "/database/ingest-consommation-brute", "methode": "POST", "fichier_source": "ms_data/routes/database.py",
+        "description": "Ingestion manuelle, par plage de dates, du dataset ODRE "
+        "consommation-quotidienne-brute-regionale (API paginée) dans "
+        "mesure_consommation_brute_regionale (relationnal.db et Postgres)",
+        "auth": True,
+        "parametres": [
+            {"nom": "date_debut", "emplacement": "query", "type": "str", "requis": True},
+            {"nom": "date_fin", "emplacement": "query", "type": "str", "requis": True},
+        ],
+    },
+    {
         "chemin": "/dijkstra/load-datastore", "methode": "GET", "fichier_source": "dijkstra.py",
-        "description": "Recharge le datastore mémoire depuis analytics.db", "auth": True, "parametres": [],
+        "description": "Recharge le datastore mémoire depuis relationnal.db", "auth": True, "parametres": [],
     },
     {
         "chemin": "/dijkstra/rapport", "methode": "GET", "fichier_source": "dijkstra.py",
@@ -94,6 +115,7 @@ ROUTES_CATALOG = [
         "description": "Simulation multi-régions sur 96 pas de 15 min, avec perturbations optionnelles",
         "auth": True,
         "parametres": [
+            {"nom": "date", "emplacement": "query", "type": "str", "requis": True},
             {
                 "nom": "perturbations", "emplacement": "body", "type": "list[Perturbation]",
                 "requis": False, "defaut": "null",
@@ -103,13 +125,17 @@ ROUTES_CATALOG = [
     {
         "chemin": "/dijkstra/besoins-residuels", "methode": "GET", "fichier_source": "dijkstra.py",
         "description": "Besoin résiduel (conso - solaire - éolien) par région et par quart d'heure",
-        "auth": True, "parametres": [],
+        "auth": True,
+        "parametres": [
+            {"nom": "date", "emplacement": "query", "type": "str", "requis": True},
+        ],
     },
     {
         "chemin": "/dijkstra/simulation-complete", "methode": "POST", "fichier_source": "dijkstra.py",
         "description": "Simulation complète avec contraintes réelles sur l'ensemble des faits de consommation "
         "(toutes régions, tous quarts d'heure), avec filtre facultatif par région et/ou heure",
         "auth": True, "parametres": [
+            {"nom": "date", "emplacement": "query", "type": "str", "requis": True},
             {
                 "nom": "region", "type": "string", "emplacement": "body",
                 "requis": False, "defaut": "null",
@@ -139,10 +165,7 @@ ROUTES_CATALOG = [
         "parametres": [
             {"nom": "region_id", "emplacement": "path", "type": "str", "requis": True},
             {"nom": "heure", "emplacement": "query", "type": "str", "requis": True},
-            {
-                "nom": "jour_relatif", "emplacement": "query", "type": "str",
-                "requis": False, "defaut": "reference_day",
-            },
+            {"nom": "date", "emplacement": "query", "type": "str", "requis": True},
         ],
     },
     {
@@ -151,10 +174,7 @@ ROUTES_CATALOG = [
         "auth": True,
         "parametres": [
             {"nom": "heure", "emplacement": "query", "type": "str", "requis": True},
-            {
-                "nom": "jour_relatif", "emplacement": "query", "type": "str",
-                "requis": False, "defaut": "reference_day",
-            },
+            {"nom": "date", "emplacement": "query", "type": "str", "requis": True},
         ],
     },
     {
@@ -164,10 +184,7 @@ ROUTES_CATALOG = [
         "parametres": [
             {"nom": "region_id", "emplacement": "path", "type": "str", "requis": True},
             {"nom": "heure", "emplacement": "query", "type": "str", "requis": True},
-            {
-                "nom": "jour_relatif", "emplacement": "query", "type": "str",
-                "requis": False, "defaut": "reference_day",
-            },
+            {"nom": "date", "emplacement": "query", "type": "str", "requis": True},
         ],
     },
 ]
@@ -177,18 +194,18 @@ ROUTES_CATALOG = [
 TABLES = [
     "parametre_route",
     "route",
-    "fait_evenement_consommation",
-    "scenario_phase3",
     "scenario_override",
     "scenario",
     "accessible_via",
     "reacteur",
     "liaison",
     "centrale",
-    "fait_consommation",
-    "fait_production_non_pilotable",
     "capacitee_instalee_non_pilotable",
-    "dim_temps",
     "filiere",
     "region",
 ]
+
+# mesure_eco2mix_regionale et mesure_consommation_brute_regionale sont
+# ingérées à part (POST /database/ingest-eco2mix et /ingest-consommation-brute,
+# manuellement, par plage de dates) : elles ne sont pas dans TABLES pour ne
+# pas être vidées à chaque /database/ingest global.

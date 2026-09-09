@@ -12,7 +12,6 @@ from .calcul import (
     rechercher_centrales_distantes,
     calcul_distance_region,
     charger_journee_reference,
-    recuperer_consommations_initiales,
     calculer_evolution_consommation,
     calculer_evolutions_regions,
     recuperer_consommations_par_temps,
@@ -338,13 +337,14 @@ def get_calcule(region: str, augmentation_mw: float):
 #-----------------------------------------------------------------------------------------------------------------------
 @router.post("/simulation-regions")
 def calculer_regions(
+    date: str = Query(..., description="Jour ingéré (YYYY-MM-DD) via POST /database/ingest-eco2mix"),
     perturbations: Optional[list[Perturbation]] = None
 ):
     if perturbations is None:
         perturbations = []
-    # Réserve minimale 
+    # Réserve minimale
     reserve_minimale_mw = 2000
-    donnees = charger_journee_reference()
+    donnees = charger_journee_reference(date)
     journee = parcourir_journee(donnees)
     indice_heure=0
     resultats = []
@@ -356,8 +356,8 @@ def calculer_regions(
         plant_id: central.initial_output_mw
         for plant_id, central in store.centrales.items()
     }
-    # Retourner les besoins solaires et eoliens  
-    besoins_solaires_eoliens = get_besoins_solaires_eoliens()
+    # Retourner les besoins solaires et eoliens
+    besoins_solaires_eoliens = get_besoins_solaires_eoliens(date)
 
     # Parcours des quarts d'heure
     for etape in journee:
@@ -432,10 +432,12 @@ def calculer_regions(
 # Exposition des besoins résiduels par région et par /4 d'heure dernière version
 # ---------------------------------------------------------------------------
 @router.get("/besoins-residuels")
-def get_besoins_residuels():
+def get_besoins_residuels(
+    date: str = Query(..., description="Jour ingéré (YYYY-MM-DD) via POST /database/ingest-eco2mix"),
+):
 
-    donnees_consommation = charger_journee_reference()
-    donnees_non_pilotables = charger_journee_reference_hors_nucleaire()
+    donnees_consommation = charger_journee_reference(date)
+    donnees_non_pilotables = charger_journee_reference_hors_nucleaire(date)
 
     journee = parcourir_journee(donnees_consommation)
 
@@ -574,15 +576,18 @@ def _simulation_complete_region_heure(
 
 
 @router.post("/simulation-complete")
-def simulation_complete(filtre: Optional[SimulationCompleteFiltre] = None):
+def simulation_complete(
+    date: str = Query(..., description="Jour ingéré (YYYY-MM-DD) via POST /database/ingest-eco2mix"),
+    filtre: Optional[SimulationCompleteFiltre] = None,
+):
 
 # ---------------------------------------------------------
 # 1. CHARGEMENT DES DONNÉES (ensemble des faits de consommation)
 # ---------------------------------------------------------
     store = get_store()
-    donnees_consommation = charger_journee_reference()
+    donnees_consommation = charger_journee_reference(date)
 
-    donnees_non_pilotables = (charger_journee_reference_hors_nucleaire())
+    donnees_non_pilotables = (charger_journee_reference_hors_nucleaire(date))
 
     # data.json
     production_nucleaire = charger_production_nucleaire()

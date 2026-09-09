@@ -18,7 +18,7 @@ RUN uv sync --frozen --no-dev
 
 # Copier le reste du projet
 COPY ./ms_dijkstra .
-# analytics.db est produite par ms_data ; graph/datastore.py la lit depuis
+# relationnal.db est produite par ms_data ; graph/datastore.py la lit depuis
 # /ms_data/data (chemin cross-service, cf. ms_dijkstra/graph/datastore.py).
 COPY ./ms_data/data /ms_data/data
 

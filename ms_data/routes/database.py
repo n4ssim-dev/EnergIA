@@ -1,19 +1,34 @@
+import csv
 import json
 import os
 import sqlite3
+from datetime import date, timedelta
 from pathlib import Path
 
+import httpx
 import psycopg
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 
 from catalog import ROUTES_CATALOG, TABLES
 
 from .auth import check_password
 
-# analytics.db est désormais la source lue par ms_dijkstra (graph/datastore.py)
+ECO2MIX_CSV_PATH = Path(__file__).parent.parent / "data" / "eco2mix-regional-tr.csv"
+ODRE_CONSOMMATION_BRUTE_URL = (
+    "https://odre.opendatasoft.com/api/explore/v2.1/catalog/datasets/"
+    "consommation-quotidienne-brute-regionale/records"
+)
+ODRE_PAGE_SIZE = 100
+# L'API v2.1 d'opendatasoft refuse offset + limit > 10 000. Avec 12 régions x
+# 48 pas de 30 min/jour (576 lignes/jour), 14 jours reste large sous ce
+# plafond (8 064 lignes) : on découpe donc la plage demandée en tranches de
+# ODRE_CHUNK_DAYS jours, chacune paginée indépendamment (offset repart à 0).
+ODRE_CHUNK_DAYS = 14
+
+# relationnal.db est désormais la source lue par ms_dijkstra (graph/datastore.py)
 # via un chemin cross-service vers ms_data/data.
 DATA_DIR = Path(__file__).parent.parent / "data"
-DB_PATH = DATA_DIR / "analytics.db"
+DB_PATH = DATA_DIR / "relationnal.db"
 SCHEMA_PATH = DATA_DIR / "mcd_analytique.sql"
 # Même fichier que celui monté dans le conteneur Postgres pour le bootstrap
 # initial (docker-entrypoint-initdb.d) : voir postgres/docker-compose.yml.
@@ -73,7 +88,7 @@ def reset_postgres_schema(pg_conn):
 
 
 def mirror_to_postgres(sqlite_conn):
-    """Copie le contenu de analytics.db (déjà ingéré) vers Postgres, table par
+    """Copie le contenu de relationnal.db (déjà ingéré) vers Postgres, table par
     table, dans l'ordre inverse de TABLES (parents avant enfants) pour
     respecter les contraintes de clé étrangère."""
     pg_conn = get_postgres_connection()
@@ -107,35 +122,6 @@ def mirror_to_postgres(sqlite_conn):
 def _load(filename):
     with open(DATA_DIR / filename, "r", encoding="utf-8") as f:
         return json.load(f)
-
-
-def _step_index_from_hhmm(horodatage):
-    heure, minute = horodatage.split(":")
-    return int(heure) * 4 + int(minute) // 15
-
-
-def _id_temps(jour_relatif, horodatage):
-    return f"{jour_relatif}#{horodatage}"
-
-
-def _ensure_dim_temps_point(conn, jour_relatif, horodatage):
-    conn.execute(
-        """
-        INSERT OR IGNORE INTO dim_temps (id_temps, step_index, jour_relatif, heure)
-        VALUES (?, ?, ?, ?)
-        """,
-        (
-            _id_temps(jour_relatif, horodatage),
-            _step_index_from_hhmm(horodatage),
-            jour_relatif,
-            horodatage,
-        ),
-    )
-
-
-def _ensure_dim_temps(conn, timestamps, jour_relatif="reference_day"):
-    for ts in timestamps:
-        _ensure_dim_temps_point(conn, jour_relatif, ts)
 
 
 def ingest_data_json(conn):
@@ -303,53 +289,8 @@ def ingest_nuclear_temporal_params(conn):
     return {"centrale_enrichie": count}
 
 
-def ingest_fait_consommation(conn):
-    """Fusionne le profil de référence (96 pas, jour J) et l'état initial t-1
-    dans la même table de faits, distingués par type_mesure."""
-    row_id = 0
-
-    raw = _load("energia-journee-reference-consommation.json")
-    timestamps = raw["timestamps"]
-    _ensure_dim_temps(conn, timestamps, jour_relatif="reference_day")
-    for r in raw.get("regions", []):
-        for ts, valeur in zip(timestamps, r["consumption_mw"]):
-            row_id += 1
-            conn.execute(
-                """
-                INSERT INTO fait_consommation (id, consommation_mw, type_mesure, id_temps, id_1)
-                VALUES (?, ?, ?, ?, ?)
-                """,
-                (row_id, valeur, "reference", _id_temps("reference_day", ts), r["id"]),
-            )
-
-    # energia-journee-reference-avec-t-moins-1.json reprend la même série que
-    # ci-dessus (déjà ingérée) : on ne lit ici que le bloc initial_state_t_minus_1,
-    # propre à ce fichier.
-    raw = _load("energia-journee-reference-avec-t-moins-1.json")
-    etat = raw["initial_state_t_minus_1"]
-    horodatage = etat["timestamp"]
-    jour_relatif = etat["relative_day"]
-    _ensure_dim_temps_point(conn, jour_relatif, horodatage)
-    for region_id, valeurs in etat["regions"].items():
-        row_id += 1
-        conn.execute(
-            """
-            INSERT INTO fait_consommation (id, consommation_mw, type_mesure, id_temps, id_1)
-            VALUES (?, ?, ?, ?, ?)
-            """,
-            (
-                row_id, valeurs["consumption_mw"], "initial_t_moins_1",
-                _id_temps(jour_relatif, horodatage), region_id,
-            ),
-        )
-
-    return {"fait_consommation": row_id}
-
-
-def ingest_production_non_pilotable(conn):
+def ingest_capacite_installee_non_pilotable(conn):
     raw = _load("energia-production-non-pilotable.json")
-    timestamps = raw["timestamps"]
-    _ensure_dim_temps(conn, timestamps, jour_relatif="reference_day")
 
     for code, libelle in FILIERES.items():
         conn.execute(
@@ -358,12 +299,8 @@ def ingest_production_non_pilotable(conn):
         )
 
     capacite_id = 0
-    production_id = 0
     for r in raw.get("regions", []):
-        capacites = r.get("synthetic_installed_capacity_mw", {})
-        productions = r.get("production_mw", {})
-
-        for code_filiere, capacite_mw in capacites.items():
+        for code_filiere, capacite_mw in r.get("synthetic_installed_capacity_mw", {}).items():
             capacite_id += 1
             conn.execute(
                 """
@@ -373,55 +310,7 @@ def ingest_production_non_pilotable(conn):
                 (capacite_id, capacite_mw, r["id"], code_filiere),
             )
 
-        for code_filiere, valeurs in productions.items():
-            for ts, valeur in zip(timestamps, valeurs):
-                production_id += 1
-                conn.execute(
-                    """
-                    INSERT INTO fait_production_non_pilotable (id, production_mw, code_filiere, id_temps, id_1)
-                    VALUES (?, ?, ?, ?, ?)
-                    """,
-                    (production_id, valeur, code_filiere, _id_temps("reference_day", ts), r["id"]),
-                )
-
-    return {
-        "capacitee_instalee_non_pilotable": capacite_id,
-        "fait_production_non_pilotable": production_id,
-    }
-
-
-def ingest_scenarios_phase3(conn):
-    raw = _load("energia-scenarios-phase3-exemples.json")
-
-    event_count = 0
-    for s in raw.get("scenarios", []):
-        conn.execute(
-            "INSERT INTO scenario_phase3 (id_scenario_phase3, name) VALUES (?, ?)",
-            (s["id"], s.get("name")),
-        )
-        for i, event in enumerate(s.get("events", [])):
-            event_count += 1
-            debut, fin = event.get("start"), event.get("end")
-            _ensure_dim_temps_point(conn, "reference_day", debut)
-            _ensure_dim_temps_point(conn, "reference_day", fin)
-            conn.execute(
-                """
-                INSERT INTO fait_evenement_consommation (
-                    id_evenement_consommation, type, delta_mw, delta_percent,
-                    id_scenario_phase3, id, id_temps, id_temps_1
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    f"{s['id']}#{i}", event.get("type"), event.get("delta_mw"),
-                    event.get("delta_percent"), s["id"], event["region_id"],
-                    _id_temps("reference_day", debut), _id_temps("reference_day", fin),
-                ),
-            )
-
-    return {
-        "scenario_phase3": len(raw.get("scenarios", [])),
-        "fait_evenement_consommation": event_count,
-    }
+    return {"capacitee_instalee_non_pilotable": capacite_id}
 
 
 def ingest_routes(conn):
@@ -463,9 +352,7 @@ def run_ingestion():
         summary = {}
         summary.update(ingest_data_json(conn))
         summary.update(ingest_nuclear_temporal_params(conn))
-        summary.update(ingest_fait_consommation(conn))
-        summary.update(ingest_production_non_pilotable(conn))
-        summary.update(ingest_scenarios_phase3(conn))
+        summary.update(ingest_capacite_installee_non_pilotable(conn))
         summary.update(ingest_routes(conn))
         conn.commit()
         mirror_to_postgres(conn)
@@ -477,6 +364,172 @@ def run_ingestion():
         conn.close()
 
 
+def _region_ids_by_insee(conn):
+    return dict(conn.execute("SELECT insee_code, id FROM region"))
+
+
+def _upsert_postgres(table, columns, key_columns, rows):
+    if not rows:
+        return
+    update_columns = [c for c in columns if c not in key_columns]
+    placeholders = ", ".join(["%s"] * len(columns))
+    set_clause = ", ".join(f"{c} = EXCLUDED.{c}" for c in update_columns)
+    sql = (
+        f"INSERT INTO {table} ({', '.join(columns)}) VALUES ({placeholders}) "
+        f"ON CONFLICT ({', '.join(key_columns)}) DO UPDATE SET {set_clause}"
+    )
+    pg_conn = get_postgres_connection()
+    try:
+        with pg_conn.cursor() as cur:
+            cur.executemany(sql, rows)
+        pg_conn.commit()
+    except Exception:
+        pg_conn.rollback()
+        raise
+    finally:
+        pg_conn.close()
+
+
+# Colonnes retenues côté eco2mix : consommation électrique + solaire/éolien
+# (seule production "non pilotable" utilisée par le calcul du besoin résiduel).
+# Thermique/nucléaire/hydraulique/pompage/bioénergies/échanges physiques/
+# stockage batterie et les taux TCO/TCH sont hors périmètre et non consommés
+# par aucun endpoint : volontairement pas ingérés.
+MESURE_ECO2MIX_COLUMNS = ["id_region", "date_heure", "nature", "consommation_mw", "eolien_mw", "solaire_mw"]
+
+# Colonnes -> en-têtes du CSV eco2mix-regional-tr.csv (pour les colonnes MW,
+# id_region/date_heure/nature sont dérivées séparément).
+_ECO2MIX_CSV_FIELD_MAP = {
+    "consommation_mw": "Consommation (MW)",
+    "eolien_mw": "Eolien (MW)",
+    "solaire_mw": "Solaire (MW)",
+}
+
+
+def _to_float(value):
+    if value is None or value == "":
+        return None
+    return float(value)
+
+
+def _read_eco2mix_rows(region_ids, date_debut, date_fin):
+    with open(ECO2MIX_CSV_PATH, encoding="utf-8-sig", newline="") as f:
+        for row in csv.DictReader(f, delimiter=";"):
+            if not (date_debut <= row["Date"] <= date_fin):
+                continue
+            id_region = region_ids.get(row["Code INSEE région"])
+            if id_region is None:
+                continue
+            yield (
+                id_region, row["Date - Heure"], row["Nature"],
+                *(
+                    _to_float(row[_ECO2MIX_CSV_FIELD_MAP[c]])
+                    for c in MESURE_ECO2MIX_COLUMNS[3:]
+                ),
+            )
+
+
+def ingest_eco2mix_regionale(conn, date_debut, date_fin):
+    """Ingestion manuelle, par plage de dates incluse (YYYY-MM-DD), depuis
+    eco2mix-regional-tr.csv (RTE). Idempotent : upsert sur (id_region, date_heure),
+    aussi bien côté relationnal.db que Postgres."""
+    region_ids = _region_ids_by_insee(conn)
+    rows = list(_read_eco2mix_rows(region_ids, date_debut, date_fin))
+
+    conn.executemany(
+        f"""
+        INSERT OR REPLACE INTO mesure_eco2mix_regionale ({", ".join(MESURE_ECO2MIX_COLUMNS)})
+        VALUES ({", ".join(["?"] * len(MESURE_ECO2MIX_COLUMNS))})
+        """,
+        rows,
+    )
+    conn.commit()
+    _upsert_postgres(
+        "mesure_eco2mix_regionale", MESURE_ECO2MIX_COLUMNS,
+        ["id_region", "date_heure"], rows,
+    )
+    return {"mesure_eco2mix_regionale": len(rows)}
+
+
+# Gaz (grtgaz/terega) hors périmètre "consommation électrique" : non retenu.
+MESURE_CONSOMMATION_BRUTE_COLUMNS = [
+    "id_region", "date_heure", "consommation_brute_electricite_rte", "statut_rte",
+    "flag_ignore",
+]
+
+
+def _date_chunks(date_debut, date_fin, chunk_days=ODRE_CHUNK_DAYS):
+    """Découpe [date_debut, date_fin] (YYYY-MM-DD, incluses) en tranches
+    contiguës d'au plus chunk_days jours."""
+    debut = date.fromisoformat(date_debut)
+    fin = date.fromisoformat(date_fin)
+    while debut <= fin:
+        chunk_fin = min(debut + timedelta(days=chunk_days - 1), fin)
+        yield debut.isoformat(), chunk_fin.isoformat()
+        debut = chunk_fin + timedelta(days=1)
+
+
+def _fetch_odre_records_chunk(client, chunk_debut, chunk_fin):
+    where = f"date in [date'{chunk_debut}'..date'{chunk_fin}']"
+    offset = 0
+    while True:
+        response = client.get(
+            ODRE_CONSOMMATION_BRUTE_URL,
+            params={"where": where, "limit": ODRE_PAGE_SIZE, "offset": offset},
+        )
+        response.raise_for_status()
+        results = response.json().get("results", [])
+        if not results:
+            return
+        yield from results
+        if len(results) < ODRE_PAGE_SIZE:
+            return
+        offset += ODRE_PAGE_SIZE
+
+
+def _fetch_odre_records(date_debut, date_fin):
+    """Parcourt l'API paginée (v2.1 /records) du dataset ODRE
+    consommation-quotidienne-brute-regionale, par lots de ODRE_PAGE_SIZE,
+    en découpant la plage en tranches de ODRE_CHUNK_DAYS jours pour rester
+    sous le plafond offset+limit <= 10 000 de l'API (pas d'export JSON brut
+    global)."""
+    with httpx.Client(timeout=30.0) as client:
+        for chunk_debut, chunk_fin in _date_chunks(date_debut, date_fin):
+            yield from _fetch_odre_records_chunk(client, chunk_debut, chunk_fin)
+
+
+def ingest_consommation_brute_regionale(conn, date_debut, date_fin):
+    """Ingestion manuelle, par plage de dates incluse (YYYY-MM-DD), depuis
+    l'API ODRE consommation-quotidienne-brute-regionale. Idempotent : upsert
+    sur (id_region, date_heure), aussi bien côté relationnal.db que Postgres."""
+    region_ids = _region_ids_by_insee(conn)
+    rows = []
+    for record in _fetch_odre_records(date_debut, date_fin):
+        id_region = region_ids.get(record.get("code_insee_region"))
+        if id_region is None:
+            continue
+        rows.append((
+            id_region, record.get("date_heure"),
+            record.get("consommation_brute_electricite_rte"), record.get("statut_rte"),
+            record.get("flag_ignore"),
+        ))
+
+    conn.executemany(
+        f"""
+        INSERT OR REPLACE INTO mesure_consommation_brute_regionale
+        ({", ".join(MESURE_CONSOMMATION_BRUTE_COLUMNS)})
+        VALUES ({", ".join(["?"] * len(MESURE_CONSOMMATION_BRUTE_COLUMNS))})
+        """,
+        rows,
+    )
+    conn.commit()
+    _upsert_postgres(
+        "mesure_consommation_brute_regionale", MESURE_CONSOMMATION_BRUTE_COLUMNS,
+        ["id_region", "date_heure"], rows,
+    )
+    return {"mesure_consommation_brute_regionale": len(rows)}
+
+
 router = APIRouter(prefix="/database", dependencies=[Depends(check_password)])
 
 
@@ -484,3 +537,29 @@ router = APIRouter(prefix="/database", dependencies=[Depends(check_password)])
 def ingest():
     summary = run_ingestion()
     return {"message": "Ingestion terminée", "lignes_inserees": summary}
+
+
+@router.post("/ingest-eco2mix")
+def ingest_eco2mix(
+    date_debut: str = Query(..., description="YYYY-MM-DD, incluse"),
+    date_fin: str = Query(..., description="YYYY-MM-DD, incluse"),
+):
+    conn = get_connection()
+    try:
+        summary = ingest_eco2mix_regionale(conn, date_debut, date_fin)
+    finally:
+        conn.close()
+    return {"message": "Ingestion eco2mix terminée", "lignes_inserees": summary}
+
+
+@router.post("/ingest-consommation-brute")
+def ingest_consommation_brute(
+    date_debut: str = Query(..., description="YYYY-MM-DD, incluse"),
+    date_fin: str = Query(..., description="YYYY-MM-DD, incluse"),
+):
+    conn = get_connection()
+    try:
+        summary = ingest_consommation_brute_regionale(conn, date_debut, date_fin)
+    finally:
+        conn.close()
+    return {"message": "Ingestion consommation brute terminée", "lignes_inserees": summary}
