@@ -1,58 +1,48 @@
-from pathlib import Path
-import sqlite3
 import pandas as pd
 
 
 # ---------------------------------
-# Connexion à la base
-# ---------------------------------
-
-dossier_script = Path(__file__).resolve().parent
-chemin_bdd = dossier_script.parent / "analytique.db"
-
-connexion = sqlite3.connect(chemin_bdd)
-
-# ---------------------------------
-# Construction du dataframe
+# Enregistrement des prédictions pécédentes
 # ---------------------------------
 
 def preparer_dataframe_ml(df):
     df_ml = df.copy()
 
-    # transformations
-    # créations de variables retardées
-    # encodages éventuels
-    # suppression des valeurs manquantes
+    # Tri chronologique
+    df_ml = df_ml.sort_values(by=["id_region", "date_", "heure"])
+
+    # Consommation 15 minutes avant
+    df_ml["conso_15min_precedente"] = (
+        df_ml.groupby("id_region")["consumption_mw"].shift(1)
+    )
+
+    # Consommation 30 minutes avant
+    df_ml["conso_30min_precedente"] = (
+        df_ml.groupby("id_region")["consumption_mw"].shift(2)
+    )
+    
+    # Consommation 1 heure avant
+    df_ml["conso_1h_precedente"] = (
+        df_ml.groupby("id_region")["consumption_mw"].shift(4)
+    )
+    
+    # Consommation du jour précédent
+    df_ml["conso_jour_precedent"] = (df_ml.groupby("id_region")["consumption_mw"].shift(96)
+    )
+
+    # Consommation du jour précédent
+    df_ml["conso_semaine_precedent"] = (df_ml.groupby("id_region")["consumption_mw"].shift(672)
+    )
+    
+    # Suppression des lignes incomplètes
+    colonnes_retardees = [
+        "conso_15min_precedente",
+        "conso_30min_precedente",
+        "conso_1h_precedente",
+        "conso_jour_precedent",
+        "conso_semaine_precedente",
+    ]
+    df_ml = df_ml.dropna(subset=colonnes_retardees)
 
     return df_ml
 
-df_ml = [
-    "id_region",
-    "annee",
-    "saison",
-    "mois",
-    "jour_semaine",
-    "heure",
-    "quart_heure",
-    "est_weekend",
-    "est_ferie",
-    "temperature_min",
-    "temperature_max",
-    "type_event",
-    "impact_attendu",
-    "demographie",
-    "part_indus_lourde",
-    "conso_15min_precedente",
-    "conso_30min_precedente",
-    "conso_1h_precedente",
-    "conso_jour_precedent",
-    "conso_semaine_precedente",
-    "consumption_mw"
-]
-
-# ---------------------------------
-# Définir x et y 
-# ---------------------------------
-
-y = df_ml["consumption_mw"]
-x = 
