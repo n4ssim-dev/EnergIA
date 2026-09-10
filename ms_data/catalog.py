@@ -41,10 +41,11 @@ ROUTES_CATALOG = [
         ],
     },
     {
-        "chemin": "/database/ingest-consommation-brute", "methode": "POST", "fichier_source": "ms_data/routes/database.py",
+        "chemin": "/database/ingest-eco2mix-historique", "methode": "POST", "fichier_source": "ms_data/routes/database.py",
         "description": "Ingestion manuelle, par plage de dates, du dataset ODRE "
-        "consommation-quotidienne-brute-regionale (API paginée) dans "
-        "mesure_consommation_brute_regionale (relationnal.db et Postgres)",
+        "eco2mix-regional-cons-def (API paginée, 2013 -> ~1 mois avant aujourd'hui) "
+        "dans mesure_eco2mix_regionale (même table que /ingest-eco2mix), "
+        "relationnal.db et Postgres",
         "auth": True,
         "parametres": [
             {"nom": "date_debut", "emplacement": "query", "type": "str", "requis": True},
@@ -205,7 +206,6 @@ TABLES = [
     "region",
 ]
 
-# mesure_eco2mix_regionale et mesure_consommation_brute_regionale sont
-# ingérées à part (POST /database/ingest-eco2mix et /ingest-consommation-brute,
-# manuellement, par plage de dates) : elles ne sont pas dans TABLES pour ne
-# pas être vidées à chaque /database/ingest global.
+# mesure_eco2mix_regionale est ingérée à part (POST /database/ingest-eco2mix
+# et /ingest-eco2mix-historique, manuellement, par plage de dates) : elle
+# n'est pas dans TABLES pour ne pas être vidée à chaque /database/ingest global.

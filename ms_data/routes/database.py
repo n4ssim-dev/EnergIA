@@ -15,9 +15,14 @@ from catalog import ROUTES_CATALOG, TABLES
 from .auth import check_password
 
 ECO2MIX_CSV_PATH = Path(__file__).parent.parent / "data" / "eco2mix-regional-tr.csv"
-ODRE_CONSOMMATION_BRUTE_URL = (
+# Historique consolidé (2013 -> ~1 mois avant aujourd'hui), même grille que
+# eco2mix-regional-tr.csv (12 régions, pas 30 min pour l'historique / 15 min
+# pour le temps réel). Prend le relais là où eco2mix-regional-tr.csv (temps
+# réel, ~2 derniers mois glissants) s'arrête : les deux alimentent la même
+# table mesure_eco2mix_regionale.
+ECO2MIX_HISTORIQUE_URL = (
     "https://odre.opendatasoft.com/api/explore/v2.1/catalog/datasets/"
-    "consommation-quotidienne-brute-regionale/records"
+    "eco2mix-regional-cons-def/records"
 )
 ODRE_PAGE_SIZE = 100
 # L'API v2.1 d'opendatasoft refuse offset + limit > 10 000. Avec 12 régions x
@@ -460,13 +465,6 @@ def ingest_eco2mix_regionale(conn, date_debut, date_fin):
     return {"mesure_eco2mix_regionale": len(rows)}
 
 
-# Gaz (grtgaz/terega) hors périmètre "consommation électrique" : non retenu.
-MESURE_CONSOMMATION_BRUTE_COLUMNS = [
-    "id_region", "date_heure", "consommation_brute_electricite_rte", "statut_rte",
-    "flag_ignore",
-]
-
-
 def _date_chunks(date_debut, date_fin, chunk_days=ODRE_CHUNK_DAYS):
     """Découpe [date_debut, date_fin] (YYYY-MM-DD, incluses) en tranches
     contiguës d'au plus chunk_days jours."""
@@ -487,7 +485,7 @@ def _expected_page_count(chunk_debut, chunk_fin):
     return lignes_attendues // ODRE_PAGE_SIZE + 2
 
 
-def _fetch_odre_page(client, where, offset):
+def _fetch_odre_page(client, url, where, offset):
     # order_by explicite : sans lui, le tri par défaut n'est pas garanti
     # stable entre deux appels offset différents faits en parallèle, ce qui
     # peut faire apparaître la même ligne sur deux pages (constaté : quelques
@@ -495,7 +493,7 @@ def _fetch_odre_page(client, where, offset):
     # dédoublonne de toute façon sur (id_region, date_heure), mais autant
     # avoir une pagination correcte à la source.
     response = client.get(
-        ODRE_CONSOMMATION_BRUTE_URL,
+        url,
         params={
             "where": where, "limit": ODRE_PAGE_SIZE, "offset": offset,
             "order_by": "date_heure,code_insee_region",
@@ -505,11 +503,12 @@ def _fetch_odre_page(client, where, offset):
     return response.json().get("results", [])
 
 
-def _fetch_odre_records(date_debut, date_fin):
-    """Parcourt l'API paginée (v2.1 /records) du dataset ODRE
-    consommation-quotidienne-brute-regionale, en découpant la plage en
-    tranches de ODRE_CHUNK_DAYS jours (l'API refuse offset+limit > 10 000) et
-    en interrogeant les pages de chaque tranche EN PARALLÈLE (ODRE_MAX_CONCURRENCY
+def _fetch_odre_records(url, date_debut, date_fin):
+    """Parcourt l'API paginée (v2.1 /records) d'un dataset ODRE sur la grille
+    (12 régions x pas 30 min) d'eco2mix-regional-cons-def, en découpant la
+    plage en tranches de ODRE_CHUNK_DAYS jours (l'API refuse offset+limit
+    > 10 000) et en
+    interrogeant les pages de chaque tranche EN PARALLÈLE (ODRE_MAX_CONCURRENCY
     requêtes à la fois) plutôt qu'une par une : le nombre de pages par tranche
     est déductible à l'avance de la grille fixe du dataset, donc pas besoin
     d'attendre une page pour savoir combien en demander ensuite. Pas d'export
@@ -517,43 +516,48 @@ def _fetch_odre_records(date_debut, date_fin):
     with httpx.Client(timeout=30.0) as client, ThreadPoolExecutor(max_workers=ODRE_MAX_CONCURRENCY) as pool:
         futures = []
         for chunk_debut, chunk_fin in _date_chunks(date_debut, date_fin):
-            where = f"date in [date'{chunk_debut}'..date'{chunk_fin}']"
+            # Filtre sur date_heure, pas date : sur eco2mix-regional-cons-def,
+            # la colonne "date" est typée text côté ODS (l'API refuse toute
+            # comparaison dessus, même via IN [date'...'..date'...']), alors
+            # que date_heure est un vrai datetime sur les deux datasets.
+            where = f"date_heure in [date'{chunk_debut}'..date'{chunk_fin}']"
             for offset in range(0, _expected_page_count(chunk_debut, chunk_fin) * ODRE_PAGE_SIZE, ODRE_PAGE_SIZE):
-                futures.append(pool.submit(_fetch_odre_page, client, where, offset))
+                futures.append(pool.submit(_fetch_odre_page, client, url, where, offset))
         for future in futures:
             yield from future.result()
 
 
-def ingest_consommation_brute_regionale(conn, date_debut, date_fin):
+def ingest_eco2mix_historique_regionale(conn, date_debut, date_fin):
     """Ingestion manuelle, par plage de dates incluse (YYYY-MM-DD), depuis
-    l'API ODRE consommation-quotidienne-brute-regionale. Idempotent : upsert
-    sur (id_region, date_heure), aussi bien côté relationnal.db que Postgres."""
+    l'API ODRE eco2mix-regional-cons-def (données consolidées, 2013 ->
+    ~1 mois avant aujourd'hui). Alimente la MÊME table que
+    ingest_eco2mix_regionale (le CSV temps réel) : idempotent, upsert sur
+    (id_region, date_heure), aussi bien côté relationnal.db que Postgres."""
     region_ids = _region_ids_by_insee(conn)
     rows = []
-    for record in _fetch_odre_records(date_debut, date_fin):
+    for record in _fetch_odre_records(ECO2MIX_HISTORIQUE_URL, date_debut, date_fin):
         id_region = region_ids.get(record.get("code_insee_region"))
         if id_region is None:
             continue
         rows.append((
-            id_region, record.get("date_heure"),
-            record.get("consommation_brute_electricite_rte"), record.get("statut_rte"),
-            record.get("flag_ignore"),
+            id_region, record.get("date_heure"), record.get("nature"),
+            _to_float(record.get("consommation")),
+            _to_float(record.get("eolien")), _to_float(record.get("solaire")),
         ))
 
     conn.executemany(
         f"""
-        INSERT OR REPLACE INTO mesure_consommation_brute_regionale
-        ({", ".join(MESURE_CONSOMMATION_BRUTE_COLUMNS)})
-        VALUES ({", ".join(["?"] * len(MESURE_CONSOMMATION_BRUTE_COLUMNS))})
+        INSERT OR REPLACE INTO mesure_eco2mix_regionale ({", ".join(MESURE_ECO2MIX_COLUMNS)})
+        VALUES ({", ".join(["?"] * len(MESURE_ECO2MIX_COLUMNS))})
         """,
         rows,
     )
     conn.commit()
     _upsert_postgres(
-        "mesure_consommation_brute_regionale", MESURE_CONSOMMATION_BRUTE_COLUMNS,
+        "mesure_eco2mix_regionale", MESURE_ECO2MIX_COLUMNS,
         ["id_region", "date_heure"], rows,
     )
-    return {"mesure_consommation_brute_regionale": len(rows)}
+    return {"mesure_eco2mix_regionale": len(rows)}
 
 
 router = APIRouter(prefix="/database", dependencies=[Depends(check_password)])
@@ -578,14 +582,14 @@ def ingest_eco2mix(
     return {"message": "Ingestion eco2mix terminée", "lignes_inserees": summary}
 
 
-@router.post("/ingest-consommation-brute")
-def ingest_consommation_brute(
+@router.post("/ingest-eco2mix-historique")
+def ingest_eco2mix_historique(
     date_debut: str = Query(..., description="YYYY-MM-DD, incluse"),
     date_fin: str = Query(..., description="YYYY-MM-DD, incluse"),
 ):
     conn = get_connection()
     try:
-        summary = ingest_consommation_brute_regionale(conn, date_debut, date_fin)
+        summary = ingest_eco2mix_historique_regionale(conn, date_debut, date_fin)
     finally:
         conn.close()
-    return {"message": "Ingestion consommation brute terminée", "lignes_inserees": summary}
+    return {"message": "Ingestion eco2mix historique terminée", "lignes_inserees": summary}
