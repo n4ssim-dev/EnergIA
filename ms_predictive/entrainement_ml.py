@@ -20,7 +20,7 @@ df_ml = preparer_dataframe_ml(df)
 # ---------------------------------
 # Définition de la cible
 # ---------------------------------
-y = df_ml["consumption_mw"]
+y = df_ml["consommation_mw"]
 
 # ---------------------------------
 # Définition des features
@@ -38,8 +38,7 @@ X = df_ml[
         "est_ferie",
         "temperature_min",
         "temperature_max",
-        "type_event",
-        "impact_attendu",
+        "taux_impact_attendu",
         "demographie",
         "part_indus_lourde",
 
@@ -160,14 +159,14 @@ print("2025 :", df_2025.shape)
 
 
 # Préparation de la consommation 2024
-df_2024_baseline = df_2024[["cle_baseline","consumption_mw",]].copy()
-df_2024_baseline = df_2024_baseline.rename(columns={"consumption_mw": "prediction_naive"})
+df_2024_baseline = df_2024[["cle_baseline","consommation_mw",]].copy()
+df_2024_baseline = df_2024_baseline.rename(columns={"consommation_mw": "prediction_naive"})
 
 # Correspondance 2025 avec 2024
 df_baseline = df_2025.merge(df_2024_baseline, on="cle_baseline", how="inner")
 
 # Valeurs réelles et prédictions naïves
-y_baseline = df_baseline["consumption_mw"]
+y_baseline = df_baseline["consommation_mw"]
 prediction_baseline = df_baseline["prediction_naive"]
 
 # Évaluation de la baseline naïve

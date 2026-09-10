@@ -14,7 +14,7 @@ def charger_donnees_analytiques():
 
     requete = """
     SELECT
-        fc.consumption_mw,
+        fc.consommation_mw,
 
         dr.id_region,
         dr.code_insee,
@@ -80,9 +80,9 @@ print(correlation)
 # ---------------------------------
 # Corrélation avec la consommation
 # ---------------------------------
-correlation_consommation = (correlation["consumption_mw"].sort_values(ascending=False))
+correlation_consommation = (correlation["consommation_mw"].sort_values(ascending=False))
 
-print("\nCorrélation avec consumption_mw :")
+print("\nCorrélation avec consommation_mw :")
 print(correlation_consommation)
 
 # ---------------------------------
