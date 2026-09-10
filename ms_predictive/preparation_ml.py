@@ -39,8 +39,8 @@ def preparer_dataframe_ml(df):
     df_ml["conso_jour_precedent"] = (df_ml.groupby("id_region")["consommation_mw"].shift(96)
     )
 
-    # Consommation du jour précédent
-    df_ml["conso_semaine_precedent"] = (df_ml.groupby("id_region")["consommation_mw"].shift(672)
+    ## Consommation de la semaine précédente
+    df_ml["conso_semaine_precedente"] = (df_ml.groupby("id_region")["consommation_mw"].shift(672)
     )
     
     # Suppression des lignes incomplètes

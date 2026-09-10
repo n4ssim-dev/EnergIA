@@ -2,6 +2,7 @@ import sqlite3
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
+from utils.db import connect_bdd, disconnect_bdd
 
 from preparation_ml import preparer_dataframe_ml
 
@@ -10,11 +11,12 @@ from preparation_ml import preparer_dataframe_ml
 # ---------------------------------
 
 def charger_donnees_analytiques():
-    connexion = sqlite3.connect("data/analytique.db")
+    connexion = connect_bdd()
 
     requete = """
     SELECT
         fc.consommation_mw,
+        fc.date_heure,
 
         dr.id_region,
         dr.code_insee,
@@ -25,19 +27,16 @@ def charger_donnees_analytiques():
         dt.annee,
         dt.saison,
         dt.mois,
-        dt.date_,
         dt.jour_semaine,
-        dt.heure,
         dt.quart_heure,
         dt.est_weekend,
         dt.est_ferie,
 
         dm.temperature_min,
         dm.temperature_max,
+        dm.temperature_moy,
 
-        de.type_event,
-        de.nom AS evenement,
-        de.impact_attendu
+        de.taux_impact_attendu
 
     FROM fait_consommation AS fc
 
@@ -45,59 +44,73 @@ def charger_donnees_analytiques():
         ON fc.id_region = dr.id_region
 
     LEFT JOIN dim_temps AS dt
-        ON fc.id_temps = dt.id_temps
+        ON fc.date_heure = dt.date_heure
 
     LEFT JOIN dim_meteo AS dm
-        ON fc.id_meteo = dm.id_meteo
+        ON fc.id_region = dm.id_region
+        AND DATE(fc.date_heure) = dm.date_meteo
 
     LEFT JOIN dim_event AS de
-        ON fc.id_event = de.id_event
+        ON fc.id_region = de.id_region
+        AND DATE(fc.date_heure) = de.date_event
     """
 
     df = pd.read_sql_query(requete, connexion)
 
-    connexion.close()
+    disconnect_bdd(connexion)
 
     return df
-# ---------------------------------
-# Chargement
-# ---------------------------------
-df = charger_donnees_analytiques()
 
-# ---------------------------------
-# Préparation des données ML
-# ---------------------------------
-df_ml = preparer_dataframe_ml(df)
+if __name__ == "__main__":
+    # ---------------------------------
+    # Chargement
+    # ---------------------------------
+    df = charger_donnees_analytiques()
 
-# ---------------------------------
-# Matrice de corrélation
-# ---------------------------------
-correlation = df_ml.corr(numeric_only=True)
+    # ---------------------------------
+    # Préparation des données ML
+    # ---------------------------------
+    df_ml = preparer_dataframe_ml(df)
 
-print("Matrice de corrélation :")
-print(correlation)
+    df_correlation = pd.get_dummies(
+        df_ml,
+        columns=[
+            "saison",
+        ],
+        drop_first=False
+    )
 
-# ---------------------------------
-# Corrélation avec la consommation
-# ---------------------------------
-correlation_consommation = (correlation["consommation_mw"].sort_values(ascending=False))
 
-print("\nCorrélation avec consommation_mw :")
-print(correlation_consommation)
+    # ---------------------------------
+    # Matrice de corrélation
+    # ---------------------------------
+    correlation = df_correlation.corr(numeric_only=True)
 
-# ---------------------------------
-# Heatmap de corrélation
-# ---------------------------------
-plt.figure(figsize=(12, 8))
+    print("Matrice de corrélation :")
+    print(correlation)
 
-sns.heatmap(
-    correlation,
-    annot=True,
-    fmt=".2f",
-    cmap="coolwarm",
-    center=0
-)
+    # ---------------------------------
+    # Corrélation avec la consommation
+    # ---------------------------------
+    correlation_consommation = (correlation["consommation_mw"].sort_values(ascending=False))
 
-plt.title("Matrice de corrélation des variables")
-plt.tight_layout()
-plt.show()
+    print("\nCorrélation avec consommation_mw :")
+    print(correlation_consommation)
+
+    # ---------------------------------
+    # Heatmap de corrélation
+    # ---------------------------------
+    plt.figure(figsize=(12, 8))
+
+    sns.heatmap(
+        correlation,
+        annot=True,
+        fmt=".2f",
+        cmap="coolwarm",
+        center=0
+    )
+
+    plt.title("Matrice de corrélation des variables")
+    plt.tight_layout()
+    plt.show()
+

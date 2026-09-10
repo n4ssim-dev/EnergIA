@@ -27,6 +27,7 @@ y = df_ml["consommation_mw"]
 # ---------------------------------
 X = df_ml[
     [
+       
         "id_region",
         "annee",
         "saison",
@@ -38,14 +39,14 @@ X = df_ml[
         "est_ferie",
         "temperature_min",
         "temperature_max",
+        "temperature_moy",
         "taux_impact_attendu",
         "demographie",
-        "part_indus_lourde",
-
-        "conso_15min_precedente",
-        "conso_30min_precedente",
-        "conso_1h_precedente",
-        "conso_jour_precedent",
+        
+        # "conso_15min_precedente",
+        # "conso_30min_precedente",
+        # "conso_1h_precedente",
+        # "conso_jour_precedent",
         "conso_semaine_precedente",
     ]
 ]
@@ -66,8 +67,6 @@ variables_categorielles = [
     "id_region",
     "saison",
     "jour_semaine",
-    "type_event",
-    "impact_attendu",
 ]
 
 variables_numeriques = [
@@ -79,13 +78,14 @@ variables_numeriques = [
     "est_ferie",
     "temperature_min",
     "temperature_max",
+    "temperature_moy",
+    "taux_impact_attendu",
     "demographie",
-    "part_indus_lourde",
-
-    "conso_15min_precedente",
-    "conso_30min_precedente",
-    "conso_1h_precedente",
-    "conso_jour_precedent",
+    
+    # "conso_15min_precedente",
+    # "conso_30min_precedente",
+    # "conso_1h_precedente",
+    # "conso_jour_precedent",
     "conso_semaine_precedente",
 ]
 
