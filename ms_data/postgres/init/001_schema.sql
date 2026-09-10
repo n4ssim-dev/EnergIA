@@ -45,20 +45,6 @@ CREATE TABLE IF NOT EXISTS mesure_eco2mix_regionale(
    FOREIGN KEY(id_region) REFERENCES region(id)
 );
 
--- Consommation brute électricité par région (ODRE, dataset
--- consommation-quotidienne-brute-regionale), même ingestion manuelle par
--- plage de dates, via l'API paginée (pas d'export JSON brut global). Le gaz
--- (grtgaz/terega) est hors périmètre "consommation électrique" et non retenu.
-CREATE TABLE IF NOT EXISTS mesure_consommation_brute_regionale(
-   id_region VARCHAR(50),
-   date_heure TIMESTAMP,
-   consommation_brute_electricite_rte DECIMAL(15,2),
-   statut_rte VARCHAR(20),
-   flag_ignore VARCHAR(10),
-   PRIMARY KEY(id_region, date_heure),
-   FOREIGN KEY(id_region) REFERENCES region(id)
-);
-
 CREATE TABLE scenario(
    id INT,
    description VARCHAR(250),

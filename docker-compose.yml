@@ -86,6 +86,52 @@ services:
     restart: unless-stopped
 
 
+  ms-predictive:
+    build:
+      context: ./ms_predictive
+    profiles: ["ms-predictive"]
+    container_name: energia-ms-predictive
+    environment:
+      HOST: 0.0.0.0
+      PORT: 8005
+      # Sur le réseau docker-compose, on parle aux deux Postgres par leur nom de service.
+      POSTGRES_HOST: postgres-predictive
+      POSTGRES_PORT: 5432
+      SOURCE_POSTGRES_HOST: postgres
+      SOURCE_POSTGRES_PORT: 5432
+    env_file:
+      - ./ms_predictive/.env
+    ports:
+      - "${PREDICTIVE_PORT:-8005}:8005"
+    volumes:
+      - ./ms_predictive/data:/app/data
+    depends_on:
+      postgres-predictive:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  postgres-predictive:
+    image: postgres:17-alpine
+    profiles: ["ms-predictive", "postgres-predictive"]
+    container_name: energia-ms-predictive-postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_PREDICTIVE_USER:-energia}
+      POSTGRES_PASSWORD: ${POSTGRES_PREDICTIVE_PASSWORD:-energia}
+      POSTGRES_DB: ${POSTGRES_PREDICTIVE_DB:-energia_predictive}
+    ports:
+      - "${POSTGRES_PREDICTIVE_PORT:-5435}:5432"
+    volumes:
+      - ms_predictive_postgres:/var/lib/postgresql/data
+      - ./ms_predictive/postgres/init:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_PREDICTIVE_USER:-energia} -d ${POSTGRES_PREDICTIVE_DB:-energia_predictive}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
   frontend:
     build:
       context: .
@@ -101,3 +147,4 @@ services:
 
 volumes:
   ms_data_postgres:
+  ms_predictive_postgres:
