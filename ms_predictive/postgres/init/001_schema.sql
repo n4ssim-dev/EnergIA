@@ -1,3 +1,7 @@
+-- Schéma Postgres pour la base analytique ms_predictive (entraînement ML).
+-- Miroir de ms_predictive/data/mcd_analytique.sql, ré-exécuté au premier
+-- démarrage du volume (docker-entrypoint-initdb.d).
+
 CREATE TABLE dim_regionale (
     id_region VARCHAR(50),
     code_insee INT NOT NULL,
@@ -20,7 +24,7 @@ CREATE TABLE dim_meteo (
 );
 
 CREATE TABLE dim_temps (
-    date_heure DATETIME,
+    date_heure TIMESTAMP,
     annee INT NOT NULL,
     saison VARCHAR(10) NOT NULL,
     mois INT NOT NULL,
@@ -42,7 +46,7 @@ CREATE TABLE dim_event (
 CREATE TABLE fait_consommation (
     id_conso VARCHAR(50),
     consommation_mw DECIMAL(15,2) NOT NULL,
-    date_heure DATETIME NOT NULL,
+    date_heure TIMESTAMP NOT NULL,
     id_region VARCHAR(50) NOT NULL,
     PRIMARY KEY (id_conso),
     FOREIGN KEY (date_heure) REFERENCES dim_temps(date_heure),
