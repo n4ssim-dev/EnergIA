@@ -1,3 +1,5 @@
+import joblib
+
 from preparation_ml import preparer_dataframe_ml
 from analyse_donnees import charger_donnees_analytiques
 
@@ -5,6 +7,8 @@ from sklearn.compose import ColumnTransformer
 from sklearn.preprocessing import OneHotEncoder
 from sklearn.linear_model import LinearRegression
 from sklearn.metrics import mean_absolute_error, mean_absolute_percentage_error
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.model_selection import train_test_split
 
 # ---------------------------------
 # Chargement des données
@@ -182,24 +186,40 @@ mape_baseline = mean_absolute_percentage_error(y_baseline, prediction_baseline)
 print(f"MAE baseline naïve : {mae_baseline:.0f} MW")
 print(f"MAPE baseline naïve : {mape_baseline * 100:.2f} %")
 
-# # ---------------------------------
-# # Apprentissage sur X_train
-# # ---------------------------------
-# X_train_encode = preprocesseur.fit_transform(X_train)
+# ---------------------------------
+# Intégration de Random Forest
+# ---------------------------------
+# Split + entraînement
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2)
+model = RandomForestRegressor().fit(X_train, y_train)
 
-# # ---------------------------------
-# # Application sur X_test
-# # ---------------------------------
-# X_test_encode = preprocesseur.transform(X_test)
+# Sauvegarder le modèle
+joblib.dump(model, "conso_predictor.pkl")
 
-# # ---------------------------------
-# # Vérifications
-# # ---------------------------------
-# print("X_train avant encodage :", X_train.shape)
-# print("X_train après encodage :", X_train_encode.shape)
+# Entraînement
+model = RandomForestRegressor().fit(X, y)
+mae = mean_absolute_error(y, model.predict(X))
+print(f"MAE: {mae:.2f} MW")
 
-# print("X_test avant encodage :", X_test.shape)
-# print("X_test après encodage :", X_test_encode.shape)
 
-# print("y_train :", y_train.shape)
-# print("y_test :", y_test.shape)
+
+# Intégrer les % de sureté de la prédiction de Ramdom Forest et l'alerte automatique :
+# Score
+        # acc = model.score(X_test, y_test)
+        # st.metric("Accuracy du modèle", f"{acc*100:.1f}%")
+
+        # # Probabilités
+        # df_cpap["prob"] = model.predict_proba(X)[:, 1]
+ # ALERTE AUTOMATIQUE
+        # if len(df_risque) > 0:
+        #     st.error(f" {len(df_risque)} patient(s) risquent une alerte CPAP dans les prochains jours.")
+        # else:
+        #     st.success("Aucun patient à risque détecté.")
+
+        # # Tableau des patients à risque
+        # if len(df_risque) > 0:
+        #     st.dataframe(
+        #         df_risque[["id_patient", "date_complete", "prob"]]
+        #         .sort_values("prob", ascending=False)
+        #         .rename(columns={"prob": "probabilité"})
+        #     )
