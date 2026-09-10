@@ -1,4 +1,5 @@
 import joblib
+import pandas as pd
 
 from preparation_ml import preparer_dataframe_ml
 from analyse_donnees import charger_donnees_analytiques
@@ -14,7 +15,6 @@ from sklearn.model_selection import train_test_split
 # Chargement des données
 # ---------------------------------
 df = charger_donnees_analytiques()
-
 df_ml = preparer_dataframe_ml(df)
 
 # ---------------------------------
@@ -121,9 +121,7 @@ prediction = model_lineaire.predict(X_test_prepare)
 print(prediction[:10])
 print(y_test.head(10))
 
-#------------------------------------------------------------------
 # Utilisation du MAE
-#------------------------------------------------------------------
 mae_lineaire = mean_absolute_error(y_test, prediction)
 mape_lineaire = mean_absolute_percentage_error(y_test, prediction)
 print(f"MAE régression linéaire : {mae_lineaire:.0f} MW")
@@ -160,48 +158,60 @@ df_2025["cle_baseline"] = (
 print("2024 :", df_2024.shape)
 print("2025 :", df_2025.shape)
 
-# ---------------------------------
+
 # Préparation de la consommation 2024
-# ---------------------------------
 df_2024_baseline = df_2024[["cle_baseline","consumption_mw",]].copy()
 df_2024_baseline = df_2024_baseline.rename(columns={"consumption_mw": "prediction_naive"})
 
-# ---------------------------------
 # Correspondance 2025 avec 2024
-# ---------------------------------
 df_baseline = df_2025.merge(df_2024_baseline, on="cle_baseline", how="inner")
 
-# ---------------------------------
 # Valeurs réelles et prédictions naïves
-# ---------------------------------
 y_baseline = df_baseline["consumption_mw"]
 prediction_baseline = df_baseline["prediction_naive"]
 
-# ---------------------------------
 # Évaluation de la baseline naïve
-# ---------------------------------
 mae_baseline = mean_absolute_error(y_baseline, prediction_baseline)
 mape_baseline = mean_absolute_percentage_error(y_baseline, prediction_baseline)
 
 print(f"MAE baseline naïve : {mae_baseline:.0f} MW")
 print(f"MAPE baseline naïve : {mape_baseline * 100:.2f} %")
 
-# ---------------------------------
-# Intégration de Random Forest
-# ---------------------------------
-# Split + entraînement
-X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2)
-model = RandomForestRegressor().fit(X_train, y_train)
+#------------------------------------------------------------------
+# 2. Random Forest
+#------------------------------------------------------------------
 
-# Sauvegarder le modèle
-joblib.dump(model, "conso_predictor.pkl")
+model_random_forest = RandomForestRegressor(random_state=42)
 
 # Entraînement
-model = RandomForestRegressor().fit(X, y)
-mae = mean_absolute_error(y, model.predict(X))
-print(f"MAE: {mae:.2f} MW")
+model_random_forest.fit(X_train_prepare,y_train)
 
+# Prédiction sur 2025
+prediction_random_forest = model_random_forest.predict(X_test_prepare)
 
+# Évaluation
+mae_random_forest = mean_absolute_error(y_test, prediction_random_forest)
+mape_random_forest = mean_absolute_percentage_error(y_test, prediction_random_forest)
+
+print(f"MAE Random Forest : {mae_random_forest:.0f} MW")
+print(f"MAPE Random Forest : {mape_random_forest * 100:.2f} %")
+
+# Enregistrement du model pour ne pas avoir à le réentréner à chaque fois
+joblib.dump(model_random_forest,"conso_predictor.pkl")
+joblib.dump(preprocesseur,"preprocesseur.pkl")
+
+# ---------------------------------
+# 4. Comparaison des modèles
+# ---------------------------------
+resultats = pd.DataFrame(
+    {
+        "Modele": ["Régression linéaire", "Baseline naïve", "Random Forest",],
+        "MAE_MW": [mae_lineaire, mae_baseline, mae_random_forest,],
+        "MAPE_%": [mape_lineaire * 100, mape_baseline * 100, mape_random_forest * 100,],
+    }
+)
+
+print(resultats)
 
 # Intégrer les % de sureté de la prédiction de Ramdom Forest et l'alerte automatique :
 # Score
