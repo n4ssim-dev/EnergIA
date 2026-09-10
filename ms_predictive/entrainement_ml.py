@@ -6,7 +6,6 @@ from sklearn.preprocessing import OneHotEncoder
 from sklearn.linear_model import LinearRegression
 from sklearn.metrics import mean_absolute_error, mean_absolute_percentage_error
 
-
 # ---------------------------------
 # Chargement des données
 # ---------------------------------
@@ -39,6 +38,12 @@ X = df_ml[
         "impact_attendu",
         "demographie",
         "part_indus_lourde",
+
+        "conso_15min_precedente",
+        "conso_30min_precedente",
+        "conso_1h_precedente",
+        "conso_jour_precedent",
+        "conso_semaine_precedente",
     ]
 ]
 
@@ -73,6 +78,12 @@ variables_numeriques = [
     "temperature_max",
     "demographie",
     "part_indus_lourde",
+
+    "conso_15min_precedente",
+    "conso_30min_precedente",
+    "conso_1h_precedente",
+    "conso_jour_precedent",
+    "conso_semaine_precedente",
 ]
 
 # ---------------------------------
@@ -83,28 +94,6 @@ preprocesseur = ColumnTransformer(
         ("categoriel",OneHotEncoder(handle_unknown="ignore"),variables_categorielles)
     ],
     remainder="passthrough")
-
-# # ---------------------------------
-# # Apprentissage sur X_train
-# # ---------------------------------
-# X_train_encode = preprocesseur.fit_transform(X_train)
-
-# # ---------------------------------
-# # Application sur X_test
-# # ---------------------------------
-# X_test_encode = preprocesseur.transform(X_test)
-
-# # ---------------------------------
-# # Vérifications
-# # ---------------------------------
-# print("X_train avant encodage :", X_train.shape)
-# print("X_train après encodage :", X_train_encode.shape)
-
-# print("X_test avant encodage :", X_test.shape)
-# print("X_test après encodage :", X_test_encode.shape)
-
-# print("y_train :", y_train.shape)
-# print("y_test :", y_test.shape)
 
 #------------------------------------------------------------------
 # 1. Création de la régréssion linéaire
@@ -143,6 +132,74 @@ print(f"MAPE régression linéaire : {mape_lineaire * 100:.2f} %")
 df_2024 = df_ml[df_ml["annee"] == 2024].copy()
 df_2025 = df_ml[df_ml["annee"] == 2025].copy()
 
+#création de clés pour la baseline pour éviter qu'elle lise ligne par ligne (ce qui poserait problème sur une année bisextile)
+df_2024["cle_baseline"] = (
+    df_2024["id_region"].astype(str)
+    + "_"
+    + df_2024["mois"].astype(str)
+    + "_"
+    + df_2024["jour_mois"].astype(str)
+    + "_"
+    + df_2024["heure"].astype(str)
+)
+
+df_2025["cle_baseline"] = (
+    df_2025["id_region"].astype(str)
+    + "_"
+    + df_2025["mois"].astype(str)
+    + "_"
+    + df_2025["jour_mois"].astype(str)
+    + "_"
+    + df_2025["heure"].astype(str)
+)
+
 print("2024 :", df_2024.shape)
 print("2025 :", df_2025.shape)
 
+# ---------------------------------
+# Préparation de la consommation 2024
+# ---------------------------------
+df_2024_baseline = df_2024[["cle_baseline","consumption_mw",]].copy()
+df_2024_baseline = df_2024_baseline.rename(columns={"consumption_mw": "prediction_naive"})
+
+# ---------------------------------
+# Correspondance 2025 avec 2024
+# ---------------------------------
+df_baseline = df_2025.merge(df_2024_baseline, on="cle_baseline", how="inner")
+
+# ---------------------------------
+# Valeurs réelles et prédictions naïves
+# ---------------------------------
+y_baseline = df_baseline["consumption_mw"]
+prediction_baseline = df_baseline["prediction_naive"]
+
+# ---------------------------------
+# Évaluation de la baseline naïve
+# ---------------------------------
+mae_baseline = mean_absolute_error(y_baseline, prediction_baseline)
+mape_baseline = mean_absolute_percentage_error(y_baseline, prediction_baseline)
+
+print(f"MAE baseline naïve : {mae_baseline:.0f} MW")
+print(f"MAPE baseline naïve : {mape_baseline * 100:.2f} %")
+
+# # ---------------------------------
+# # Apprentissage sur X_train
+# # ---------------------------------
+# X_train_encode = preprocesseur.fit_transform(X_train)
+
+# # ---------------------------------
+# # Application sur X_test
+# # ---------------------------------
+# X_test_encode = preprocesseur.transform(X_test)
+
+# # ---------------------------------
+# # Vérifications
+# # ---------------------------------
+# print("X_train avant encodage :", X_train.shape)
+# print("X_train après encodage :", X_train_encode.shape)
+
+# print("X_test avant encodage :", X_test.shape)
+# print("X_test après encodage :", X_test_encode.shape)
+
+# print("y_train :", y_train.shape)
+# print("y_test :", y_test.shape)
