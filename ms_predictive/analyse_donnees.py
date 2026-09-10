@@ -62,19 +62,16 @@ def charger_donnees_analytiques():
 # ---------------------------------
 # Chargement
 # ---------------------------------
-
 df = charger_donnees_analytiques()
 
 # ---------------------------------
 # Préparation des données ML
 # ---------------------------------
-
 df_ml = preparer_dataframe_ml(df)
 
 # ---------------------------------
 # Matrice de corrélation
 # ---------------------------------
-
 correlation = df_ml.corr(numeric_only=True)
 
 print("Matrice de corrélation :")
@@ -83,7 +80,6 @@ print(correlation)
 # ---------------------------------
 # Corrélation avec la consommation
 # ---------------------------------
-
 correlation_consommation = (correlation["consumption_mw"].sort_values(ascending=False))
 
 print("\nCorrélation avec consumption_mw :")
@@ -92,7 +88,6 @@ print(correlation_consommation)
 # ---------------------------------
 # Heatmap de corrélation
 # ---------------------------------
-
 plt.figure(figsize=(12, 8))
 
 sns.heatmap(
