@@ -2,6 +2,7 @@ services:
 
   python-service:
     image: n4ssim11/energia:${API_IMAGE_TAG:-api-latest}
+    profiles: ["python-service"]
     ports:
       - "${API_PORT:-8000}:8000"
     environment:
@@ -18,6 +19,7 @@ services:
 
   gateway:
     image: n4ssim11/energia:${GATEWAY_IMAGE_TAG:-gateway-latest}
+    profiles: ["gateway"]
     ports:
       - "${GATEWAY_PORT:-3000}:3000"
     environment:
@@ -25,19 +27,20 @@ services:
       PORT: 3000
 
   langage:
-    image: ollama/ollama:0.9.2
+    image: ollama/ollama:${OLLAMA_IMAGE_TAG:-0.9.2}
+    profiles: ["langage"]
     container_name: energia_ollama
     ports:
       - "11435:11434"
-
     volumes:
       - ./ollama_data:/root/.ollama
 # modèle chargement : docker exec -it energia_ollama ollama pull qwen2.5:7b
 
-  mcp-fastapi:
+  ms_mcp:
     build:
       context: .
       dockerfile: ms_mcp/Dockerfile
+    profiles: ["mcp-fastapi"]
     environment:
       HOST: 0.0.0.0
       PORT: 8003
@@ -45,3 +48,111 @@ services:
       - "8003:8003"
     container_name: energia-mcp-fastapi
     restart: unless-stopped
+
+  ms-data:
+    build:
+      context: ./ms_data
+    profiles: ["ms-data"]
+    container_name: energia-ms-data
+    environment:
+      HOST: 0.0.0.0
+      PORT: 8004
+      # Sur le réseau docker-compose, on parle au service postgres par son nom.
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+    env_file:
+      - ./ms_data/.env
+    ports:
+      - "${PORT:-8004}:8004"
+    volumes:
+      # relationnal.db doit rester visible côté hôte : ms_dijkstra la lit
+      # directement depuis ms_data/data (chemin cross-service, hors docker).
+      - ./ms_data/data:/app/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:17-alpine
+    profiles: ["ms-data", "postgres"]
+    container_name: energia-ms-data-postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-energia}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-energia}
+      POSTGRES_DB: ${POSTGRES_DB:-energia}
+    ports:
+      - "${POSTGRES_PORT:-5434}:5432"
+    volumes:
+      - ms_data_postgres:/var/lib/postgresql/data
+      - ./ms_data/postgres/init:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-energia} -d ${POSTGRES_DB:-energia}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+
+  ms-predictive:
+    build:
+      context: ./ms_predictive
+    profiles: ["ms-predictive"]
+    container_name: energia-ms-predictive
+    environment:
+      HOST: 0.0.0.0
+      PORT: 8005
+      # Sur le réseau docker-compose, on parle aux deux Postgres par leur nom de service.
+      POSTGRES_HOST: postgres-predictive
+      POSTGRES_PORT: 5432
+      SOURCE_POSTGRES_HOST: postgres
+      SOURCE_POSTGRES_PORT: 5432
+    env_file:
+      - ./ms_predictive/.env
+    ports:
+      - "${PREDICTIVE_PORT:-8005}:8005"
+    volumes:
+      - ./ms_predictive/data:/app/data
+    depends_on:
+      postgres-predictive:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  postgres-predictive:
+    image: postgres:17-alpine
+    profiles: ["ms-predictive", "postgres-predictive"]
+    container_name: energia-ms-predictive-postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_PREDICTIVE_USER:-energia}
+      POSTGRES_PASSWORD: ${POSTGRES_PREDICTIVE_PASSWORD:-energia}
+      POSTGRES_DB: ${POSTGRES_PREDICTIVE_DB:-energia_predictive}
+    ports:
+      - "${POSTGRES_PREDICTIVE_PORT:-5435}:5432"
+    volumes:
+      - ms_predictive_postgres:/var/lib/postgresql/data
+      - ./ms_predictive/postgres/init:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_PREDICTIVE_USER:-energia} -d ${POSTGRES_PREDICTIVE_DB:-energia_predictive}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: .
+      dockerfile: ./frontend/Dockerfile
+    container_name: frontend
+    ports:
+      - "8081:8081"
+    # Montage du code source local dans le conteneur
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules # conflits du dossier node_modules
+    restart: unless-stopped
+
+volumes:
+  ms_data_postgres:
+  ms_predictive_postgres:

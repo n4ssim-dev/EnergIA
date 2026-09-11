@@ -8,6 +8,7 @@ réponse :
 - Dimension météo : température (min/max par jour)
 - Dimension évent : évènement positif et évènement négatif, 
 - Dimension régional : démographie, part industrielle lourde, nom de la région, code insee, nombre de central, part électrique hors nucléaire et part nucléaire absolu
+
 1. Dimension temporelle
 
 Variables envisagées : heure de la journée, jour de la semaine, mois, saison, week-end ou jour ouvré.

@@ -3,8 +3,8 @@ from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Query
 
-# EnergIA/ms_mcp/routes/routes.py -> EnergIA/ms_data/data/analytics.db
-DB_PATH = Path(__file__).resolve().parents[2] / "ms_data" / "data" / "analytics.db"
+# EnergIA/ms_mcp/routes/routes.py -> EnergIA/ms_data/data/relationnal.db
+DB_PATH = Path(__file__).resolve().parents[2] / "ms_data" / "data" / "relationnal.db"
 
 router = APIRouter(prefix="/routes")
 
@@ -47,7 +47,7 @@ def liste_routes(
     methode: str | None = Query(None, description="Filtrer par méthode HTTP (GET, POST...)"),
     fichier_source: str | None = Query(None, description="Filtrer par fichier source (api.py, dijkstra.py...)"),
 ):
-    """Catalogue des routes de l'API EnergIA (table `route` d'analytics.db)."""
+    """Catalogue des routes de l'API EnergIA (table `route` d'relationnal.db)."""
     conn = get_connection()
     try:
         sql = "SELECT * FROM route WHERE 1=1"

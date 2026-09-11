@@ -1,0 +1,69 @@
+<div class="chat-container">
+
+    <div class="chat-header">
+
+        <div class="logo">
+            <span class="material-icons">psychology</span>
+        </div>
+
+        <div>
+
+            <h1>EnergIA</h1>
+
+            <p> Votre assistant intelligent </p>
+
+        </div>
+
+    </div>
+
+
+    <div class="conversation">
+        @for (message of messages(); track $index) {
+
+        @if (message.auteur === 'user') {
+
+        <!-- Message utilisateur -->
+        <div class="message user">
+
+            <div class="bubble">
+                {{ message.texte }}
+            </div>
+
+        </div>
+
+        } @else {
+        <!-- Réponse IA -->
+        <div class="message bot">
+            @if (message.loading) {
+
+            <div class="typing-loader">
+                <span></span>
+                <span></span>
+                <span></span>
+            </div>
+            <span>{{ message.texte }}</span>
+            } @else {
+            <div class="bubble">
+                {{ message.texte }}
+            </div>
+            }
+        </div>
+
+        }
+
+        }
+
+    </div>
+
+
+    <div class="chat-box">
+
+        <input type="text" placeholder="Posez votre question..." [(ngModel)]="question">
+        <button (click)="envoyer()">
+            <span class="material-icons">
+                send
+            </span>
+            Envoyer
+        </button>
+    </div>
+</div>

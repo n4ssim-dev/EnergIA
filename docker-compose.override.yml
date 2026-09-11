@@ -41,7 +41,7 @@ services:
       - ./gateway:/app
       - /app/node_modules
   
-  mcp-fastapi:
+  ms_mcp:
     container_name: energia-mcp-fastapi
     build:
       context: .
@@ -52,4 +52,16 @@ services:
       - ./ms_mcp/.env
     volumes:
       - ./ms_mcp:/app
+  
+  ms-data:
+    container_name: energia-ms-data
+    build:
+      context: ./ms_data
+    profiles: ["ms-data"]
+    env_file:
+      - ./ms_data/.env
+    ports:
+      - "${PORT:-8004}:8004"
+    volumes:
+      - ./ms_data/data:/app/data
 

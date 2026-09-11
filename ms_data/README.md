@@ -1,7 +1,7 @@
 # ms_data — ETL + Postgres EnergIA
 
 Service FastAPI qui extrait les fichiers JSON de `ms_dijkstra/data`, les
-charge dans `data/analytics.db` (SQLite, lue par `ms_dijkstra`), puis
+charge dans `data/relationnal.db` (SQLite, lue par `ms_dijkstra`), puis
 mirroir le résultat vers une base Postgres dockerisée bundlée dans ce même
 service.
 
@@ -38,7 +38,7 @@ Voir `.env.example` : `HOST`, `PORT`, `API_PASSWORD`, `POSTGRES_HOST`,
 | --- | --- |
 | `data/*.json` | Copie des fichiers sources extraits (miroir de `ms_dijkstra/data`) |
 | `data/mcd_analytique.sql` | Schéma SQLite |
-| `data/analytics.db` | Base SQLite générée, lue par `ms_dijkstra` |
+| `data/relationnal.db` | Base SQLite générée, lue par `ms_dijkstra` |
 | `postgres/init/001_schema.sql` | Schéma Postgres (même modèle, `LOGICAL` -> `BOOLEAN`). Rejoué à chaque ingestion par `routes/database.py`, et monté dans `docker-entrypoint-initdb.d` pour le bootstrap initial du conteneur |
 | `routes/database.py` | Extraction JSON -> SQLite, puis mirroir SQLite -> Postgres (`POST /database/ingest`) |
 | `routes/auth.py` | Dépendance `check_password` (`API_PASSWORD`) |
