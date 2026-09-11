@@ -19,6 +19,10 @@ CREATE TABLE dim_meteo (
     temperature_min DECIMAL(5,2),
     temperature_max DECIMAL(5,2),
     temperature_moy DECIMAL(5,2),
+    -- true si la valeur a été interpolée (API météo sans donnée ce jour-là),
+    -- pour qu'un futur ingest puisse encore la remplacer par une vraie
+    -- mesure sans écraser les lignes réelles déjà présentes.
+    est_interpole BOOLEAN NOT NULL DEFAULT false,
     PRIMARY KEY (date_meteo, id_region),
     FOREIGN KEY (id_region) REFERENCES dim_regionale(id_region)
 );

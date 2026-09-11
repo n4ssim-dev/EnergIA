@@ -1,0 +1,236 @@
+<div class="prediction-page">
+
+  <!-- HEADER -->
+  <div class="page-header">
+
+    <div>
+      <span class="section-label">
+        PRÉDICTION ÉNERGÉTIQUE
+      </span>
+
+      <h1>
+        Prédire la consommation
+        <br>
+        <strong> d'une région</strong>
+      </h1>
+
+      <p>
+        Sélectionnez une région et un instant précis pour
+        obtenir une estimation de sa consommation énergétique
+      </p>
+    </div>
+
+  </div>
+
+
+  <!-- FORMULAIRE -->
+  <section class="prediction-card">
+
+    <div class="card-header">
+
+      <div class="card-icon">
+        <span class="material-icons">
+          bolt
+        </span>
+      </div>
+
+      <div>
+        <h2>Paramètres de prédiction</h2>
+
+        <p>
+          Choisissez les données à analyser
+        </p>
+      </div>
+
+    </div>
+    
+    <div class="form-grid">
+
+      <!-- REGION -->
+      <div class="form-group region-field">
+
+        <label for="region">
+          Région
+        </label>
+
+        <div class="input-wrapper">
+
+          <span class="material-icons">
+            location_on
+          </span>
+
+          <select  id="region" [(ngModel)]="inputIdRegion"> 
+            <option value="">
+              Sélectionner une région
+            </option>
+        @for (region of regions(); track region.id) {
+
+          <option [value]="region.id">
+
+          
+             {{ region.name }} 
+
+          </option>
+
+        }
+          </select>
+
+        </div>
+
+      </div>
+
+
+      <!-- DATE -->
+      <div class="form-group">
+
+        <label for="date">
+          Date
+        </label>
+
+        <div class="input-wrapper">
+
+          <span class="material-icons">
+            calendar_today
+          </span>
+
+          <input
+            id="date"
+            type="date"
+            [(ngModel)]="inputDate">
+
+        </div>
+
+      </div>
+
+
+      <!-- HEURE -->
+      <div class="form-group">
+
+        <label for="time">
+          Heure
+        </label>
+
+        <div class="input-wrapper">
+
+          <span class="material-icons">
+            schedule
+          </span>
+
+          <select
+            id="time" [(ngModel)]="inputHeure">
+            <option value="">
+              Sélectionner une heure
+            </option>
+           @for (heure of quartsHeures(); track heure.id) {
+
+          <option [value]="heure.id">
+
+          
+             {{ heure.name }} 
+
+          </option>
+
+        }
+           
+
+          </select>
+
+        </div>
+
+      </div>
+
+    </div>
+
+
+    <!-- BUTTON -->
+    <button
+      class="predict-button"
+      (click)="predire()"
+      [disabled]="!inputIdRegion || !inputDate || !inputHeure"
+      >
+
+      <span class="material-icons">
+        auto_awesome
+      </span>
+
+      Prédire la consommation
+
+      <span class="material-icons arrow">
+        arrow_forward
+      </span>
+
+    </button>
+
+  </section>
+
+
+  <!-- RESULTAT -->
+  @if (prediction !== null) {
+
+    <section class="result-section">
+
+      <div class="result-header">
+
+        <span class="section-label">
+          RÉSULTAT DE LA PRÉDICTION
+        </span>
+
+        <h2>
+          Consommation prévue
+        </h2>
+
+        <p>
+          {{ prediction }} · {{ inputDate }} · {{ inputHeure }}
+        </p>
+
+      </div>
+
+
+      <div class="result-card">
+
+        <div class="result-icon">
+          <span class="material-icons">
+            bolt
+          </span>
+        </div>
+
+        <div class="result-value">
+          {{ prediction | number:'1.0-0' }}
+          <span>MW</span>
+        </div>
+
+        <p>
+          consommation énergétique estimée
+        </p>
+
+
+        <div class="result-divider"></div>
+
+
+        <div class="result-details">
+
+          <div>
+            <span>Région</span>
+            <strong>{{ inputIdRegion }}</strong>
+          </div>
+
+          <div>
+            <span>Horaire</span>
+            <strong>{{  inputHeure }}</strong>
+          </div>
+
+          <div>
+            <span>Confiance</span>
+            <strong class="confidence">
+              {{ confidence }} %
+            </strong>
+          </div>
+
+        </div>
+
+      </div>
+
+    </section>
+  }
+
+</div>

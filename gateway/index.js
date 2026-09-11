@@ -3,6 +3,8 @@ const app = express();
 const port = 3001;
 
 const apiRoutes = require("./routes/api.routes");
+const predictionsRoutes = require("./routes/predictions.routes");
+
 
 app.use(express.json());
 
@@ -13,6 +15,8 @@ app.use(cors());  // permet au backend et au frontEnd de communiquer meme s'il s
 
 
 app.use("/api", apiRoutes);
+
+app.use("/api", predictionsRoutes);
 
 app.listen(port, () => {
   console.log(`Gateway démarrée sur http://localhost:${port}`);

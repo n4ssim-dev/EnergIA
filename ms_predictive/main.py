@@ -2,9 +2,13 @@ from dotenv import load_dotenv
 load_dotenv()
 from fastapi import FastAPI
 from routes.ingest import router as ingest_router, get_target_connection
+from routes.diagnostics import router as diagnostics_router
+from routes.predictions import router as predictions_router
 
 app = FastAPI()
 app.include_router(router=ingest_router)
+app.include_router(router=diagnostics_router)
+app.include_router(router=predictions_router)
 
 @app.get("/health")
 def health():
