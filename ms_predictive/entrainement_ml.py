@@ -18,26 +18,6 @@ from sklearn.model_selection import train_test_split
 df = charger_donnees_analytiques()
 df_ml = preparer_dataframe_ml(df)
 
-# print("Nombre de valeurs non nulles :")
-# print(df["taux_impact_attendu"].notna().sum())
-
-# print("\nNombre de NaN :")
-# print(df["taux_impact_attendu"].isna().sum())
-
-# print("\nValeur minimum :")
-# print(df["taux_impact_attendu"].min())
-
-# print("\nValeur maximum :")
-# print(df["taux_impact_attendu"].max())
-
-# print("\nQuelques valeurs présentes :")
-# print(
-#     df["taux_impact_attendu"]
-#     .dropna()
-#     .value_counts()
-#     .sort_index()
-# )
-
 # ---------------------------------
 # Définition de la cible
 # ---------------------------------
@@ -72,14 +52,24 @@ X = df_ml[
         # "conso_semaine_precedente",
     ]
 ]
-# print("Nombre de NaN par colonne dans X :")
-# print(X.isna().sum())
-# print("\nColonnes contenant des NaN :")
-# print(
-#     X.isna().sum()[
-#         X.isna().sum() > 0
-#     ]
-# )
+
+dates_meteo_manquantes = (
+    df_ml.loc[
+        df_ml["temperature_moy"].isna(),
+        "date_heure"
+    ]
+    .dt.date
+    .drop_duplicates()
+    .sort_values()
+)
+
+print("Nombre de dates météo manquantes :")
+print(len(dates_meteo_manquantes))
+
+print("\nDates météo manquantes :")
+for date_manquante in dates_meteo_manquantes:
+    print(date_manquante)
+
 # ---------------------------------
 # Séparation temporelle
 # ---------------------------------
@@ -89,19 +79,7 @@ X_test = X[df_ml["annee"] == 2025]
 y_train = y[df_ml["annee"] < 2025]
 y_test = y[df_ml["annee"] == 2025]
 
-# print("\nNaN dans X_train :")
-# print(
-#     X_train.isna().sum()[
-#         X_train.isna().sum() > 0
-#     ]
-# )
 
-# print("\nNaN dans X_test :")
-# print(
-#     X_test.isna().sum()[
-#         X_test.isna().sum() > 0
-#     ]
-# )
 # ---------------------------------
 # Séparation des types de variables
 # ---------------------------------
@@ -143,40 +121,6 @@ meteo_nan = df_ml[
     ]
 ]
 
-print(meteo_nan.head(20))
-
-meteo_nan["date"] = meteo_nan["date_heure"].dt.date
-
-print(
-    meteo_nan[
-        ["id_region", "date"]
-    ]
-    .drop_duplicates()
-    .shape
-)
-
-print(
-    meteo_nan["id_region"]
-    .value_counts()
-)
-
-jours_meteo_manquants = (
-    meteo_nan[
-        ["id_region", "date"]
-    ]
-    .drop_duplicates()
-)
-
-print(
-    jours_meteo_manquants["id_region"]
-    .value_counts()
-)
-
-print(
-    jours_meteo_manquants
-    .sort_values(["id_region", "date"])
-    .head(50)
-)
 # ---------------------------------
 # Préparation de l'encodage
 # ---------------------------------
@@ -313,25 +257,4 @@ resultats = pd.DataFrame(
 )
 
 print(resultats)
-
-# Intégrer les % de sureté de la prédiction de Ramdom Forest et l'alerte automatique :
-# Score
-        # acc = model.score(X_test, y_test)
-        # st.metric("Accuracy du modèle", f"{acc*100:.1f}%")
-
-        # # Probabilités
-        # df_cpap["prob"] = model.predict_proba(X)[:, 1]
- # ALERTE AUTOMATIQUE
-        # if len(df_risque) > 0:
-        #     st.error(f" {len(df_risque)} patient(s) risquent une alerte CPAP dans les prochains jours.")
-        # else:
-        #     st.success("Aucun patient à risque détecté.")
-
-        # # Tableau des patients à risque
-        # if len(df_risque) > 0:
-        #     st.dataframe(
-        #         df_risque[["id_patient", "date_complete", "prob"]]
-        #         .sort_values("prob", ascending=False)
-        #         .rename(columns={"prob": "probabilité"})
-        #     )
 
