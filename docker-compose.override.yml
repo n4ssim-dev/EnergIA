@@ -12,6 +12,20 @@ services:
     volumes:
       - ./ms_dijkstra:/app
 
+  ms_metier:
+    container_name: metier-service
+    build:
+      context: .
+      dockerfile: ./ms_metier/Dockerfile
+    ports:
+      - "8004:8004"
+    env_file:
+      - ./ms_metier/.env
+    depends_on :
+      - python-service
+    volumes:
+      - ./ms_metier:/app
+
   gateway:
     container_name: energia-gateway
     build:

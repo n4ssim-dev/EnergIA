@@ -7,6 +7,14 @@ services:
     environment:
       HOST: 0.0.0.0
       PORT: 8000
+  
+  ms_metier:
+    image: sosimplon/energia:${API_IMAGE_TAG:-api-latest}
+    ports:
+      - "${API_PORT:-8004}:8004"
+    environment:
+      HOST: 0.0.0.0
+      PORT: 8000
 
   gateway:
     image: n4ssim11/energia:${GATEWAY_IMAGE_TAG:-gateway-latest}

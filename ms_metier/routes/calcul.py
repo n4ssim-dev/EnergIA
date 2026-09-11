@@ -1,9 +1,12 @@
 from haversine import haversine
 import sqlite3
+import requests
+import os
 from .contraintes import (puissance_reelle,calcul_puissance_max)
 from graph.datastore import DB_PATH
 from datetime import datetime
 
+DIJKSTRA_SERVICE_URL = "http://python-service:8000"
 
 def _connect():
     conn = sqlite3.connect(DB_PATH)
@@ -113,15 +116,23 @@ def trouver_liaison(liaisons, from_id, to_id):
 def rechercher_centrales_distantes(source_id, cibles_ids, store):
     """
     Pour une centrale source, calcule la distance vers chaque centrale cible
-    via store.graph.shortest_path (Dijkstra du projet, qui gère déjà le
-    suivi du chemin via 'previous'), et enrichit avec les infos de la
-    liaison directe (pertes) si elle existe.
+    en appelant ms_dijkstra (le calcul de plus court chemin vit là-bas),
+    et enrichit avec les infos de la liaison directe (pertes) si elle existe.
     """
     resultats = []
     for cible in cibles_ids:
-        distance, chemin = store.graph.shortest_path(source_id, cible)
-        if chemin is None:
-            continue  # aucun chemin trouvé, on exclut ce candidat
+        response = requests.get(
+            f"{DIJKSTRA_SERVICE_URL}/dijkstra/shortest-path",
+            params={"from_node": source_id, "to_node": cible},
+                headers={"x-password": os.getenv("API_PASSWORD")}
+        )
+
+        if response.status_code != 200:
+            continue  # aucun chemin trouvé, ou centrale inconnue : on exclut ce candidat
+
+        data = response.json()
+        distance = data["distance_km"]
+        chemin = data["chemin"]
 
         liaison_directe = trouver_liaison(store.liaisons, source_id, cible)
         loss_percent = liaison_directe.loss_percent if liaison_directe else 0
