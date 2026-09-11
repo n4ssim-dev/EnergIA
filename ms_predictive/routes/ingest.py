@@ -299,10 +299,19 @@ def ingest_dim_meteo(target_conn, date_debut, date_fin):
         cur.execute("SELECT code_insee, id_region FROM dim_regionale")
         region_ids = {str(code_insee): id_region for code_insee, id_region in cur.fetchall()}
 
+        cur.execute(
+            "SELECT id_region, date_meteo FROM dim_meteo WHERE date_meteo BETWEEN %s AND %s",
+            (date_debut, date_fin),
+        )
+        deja_presents = set(cur.fetchall())
+
     rows = []
     for record in _fetch_temperature_records(date_debut, date_fin):
         id_region = region_ids.get(str(record.get("code_insee_region")))
         if id_region is None:
+            continue
+        date_meteo = date.fromisoformat(record.get("date"))
+        if (id_region, date_meteo) in deja_presents:
             continue
         rows.append((
             id_region, record.get("date"),
@@ -310,7 +319,12 @@ def ingest_dim_meteo(target_conn, date_debut, date_fin):
         ))
 
     _upsert(target_conn, "dim_meteo", DIM_METEO_COLUMNS, ["date_meteo", "id_region"], rows)
-    return {"dim_meteo": len(rows)}
+
+    with target_conn.cursor() as cur:
+        cur.execute("SELECT COUNT(*) FROM dim_meteo")
+        total = cur.fetchone()[0]
+
+    return {"dim_meteo_ingerees": len(rows), "dim_meteo_total": total}
 
 
 router = APIRouter(prefix="/ingest")
