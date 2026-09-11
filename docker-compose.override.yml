@@ -18,7 +18,7 @@ services:
       context: .
       dockerfile: ./ms_metier/Dockerfile
     ports:
-      - "8004:8004"
+      - "8006:8006"
     env_file:
       - ./ms_metier/.env
     depends_on :

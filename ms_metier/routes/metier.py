@@ -13,7 +13,6 @@ from .calcul import (
     rechercher_centrales_distantes,
     calcul_distance_region,
     charger_journee_reference,
-    recuperer_consommations_initiales,
     calculer_evolution_consommation,
     calculer_evolutions_regions,
     recuperer_consommations_par_temps,

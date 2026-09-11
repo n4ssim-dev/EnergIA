@@ -8,6 +8,6 @@ RUN uv sync --frozen --no-dev
 COPY ./ms_metier .
 COPY ./ms_data/data /ms_data/data
 
-EXPOSE 8004
+EXPOSE 8006
 
-CMD ["uv", "run", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8004", "--reload"]
+CMD ["uv", "run", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8006", "--reload"]
