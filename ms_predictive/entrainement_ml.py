@@ -47,10 +47,17 @@ X = df_ml[
         # "conso_30min_precedente",
         # "conso_1h_precedente",
         # "conso_jour_precedent",
-        "conso_semaine_precedente",
+        # "conso_semaine_precedente",
     ]
 ]
-
+print("Nombre de NaN par colonne dans X :")
+print(X.isna().sum())
+print("\nColonnes contenant des NaN :")
+print(
+    X.isna().sum()[
+        X.isna().sum() > 0
+    ]
+)
 # ---------------------------------
 # Séparation temporelle
 # ---------------------------------
@@ -60,6 +67,19 @@ X_test = X[df_ml["annee"] == 2025]
 y_train = y[df_ml["annee"] < 2025]
 y_test = y[df_ml["annee"] == 2025]
 
+print("\nNaN dans X_train :")
+print(
+    X_train.isna().sum()[
+        X_train.isna().sum() > 0
+    ]
+)
+
+print("\nNaN dans X_test :")
+print(
+    X_test.isna().sum()[
+        X_test.isna().sum() > 0
+    ]
+)
 # ---------------------------------
 # Séparation des types de variables
 # ---------------------------------
@@ -86,7 +106,7 @@ variables_numeriques = [
     # "conso_30min_precedente",
     # "conso_1h_precedente",
     # "conso_jour_precedent",
-    "conso_semaine_precedente",
+    # "conso_semaine_precedente",
 ]
 
 # ---------------------------------
