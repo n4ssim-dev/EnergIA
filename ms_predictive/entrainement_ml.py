@@ -9,8 +9,17 @@ from sklearn.impute import SimpleImputer
 from sklearn.preprocessing import OneHotEncoder
 from sklearn.linear_model import LinearRegression
 from sklearn.metrics import mean_absolute_error, mean_absolute_percentage_error
-from sklearn.ensemble import RandomForestRegressor
+# from sklearn.ensemble import RandomForestRegressor
 from sklearn.model_selection import train_test_split
+from sklearn.ensemble import RandomForestRegressor
+
+model_random_forest = RandomForestRegressor(
+    n_estimators=10,
+    max_depth=10,
+    random_state=42,
+    n_jobs=-1,
+    verbose=1
+)
 
 # ---------------------------------
 # Chargement des données
@@ -53,22 +62,22 @@ X = df_ml[
     ]
 ]
 
-dates_meteo_manquantes = (
-    df_ml.loc[
-        df_ml["temperature_moy"].isna(),
-        "date_heure"
-    ]
-    .dt.date
-    .drop_duplicates()
-    .sort_values()
-)
+# dates_meteo_manquantes = (
+#     df_ml.loc[
+#         df_ml["temperature_moy"].isna(),
+#         "date_heure"
+#     ]
+#     .dt.date
+#     .drop_duplicates()
+#     .sort_values()
+# )
 
-print("Nombre de dates météo manquantes :")
-print(len(dates_meteo_manquantes))
+# print("Nombre de dates météo manquantes :")
+# print(len(dates_meteo_manquantes))
 
-print("\nDates météo manquantes :")
-for date_manquante in dates_meteo_manquantes:
-    print(date_manquante)
+# print("\nDates météo manquantes :")
+# for date_manquante in dates_meteo_manquantes:
+#     print(date_manquante)
 
 # ---------------------------------
 # Séparation temporelle
@@ -179,6 +188,9 @@ print(f"MAPE régression linéaire : {mape_lineaire * 100:.2f} %")
 df_2024 = df_ml[df_ml["annee"] == 2024].copy()
 df_2025 = df_ml[df_ml["annee"] == 2025].copy()
 
+df_2024["jour_mois"] = df_2024["date_heure"].dt.day
+df_2025["jour_mois"] = df_2025["date_heure"].dt.day
+
 #création de clés pour la baseline pour éviter qu'elle lise ligne par ligne (ce qui poserait problème sur une année bisextile)
 df_2024["cle_baseline"] = (
     df_2024["id_region"].astype(str)
@@ -226,24 +238,86 @@ print(f"MAPE baseline naïve : {mape_baseline * 100:.2f} %")
 # 2. Random Forest
 #------------------------------------------------------------------
 
-model_random_forest = RandomForestRegressor(random_state=42)
+# Création d'un échantillon aléatoire de 100 000 lignes
+echantillon_rf = X_train.sample(
+    n=100000,
+    random_state=42
+)
 
+# On récupère les y correspondants
+y_train_rf = y_train.loc[
+    echantillon_rf.index
+]
+
+# On applique le même préprocesseur que pour le reste du modèle
+X_train_rf = preprocesseur.transform(
+    echantillon_rf
+)
+
+# Création du modèle
+model_random_forest = RandomForestRegressor(
+    random_state=42
+)
+
+# ---------------------------------
 # Entraînement
-model_random_forest.fit(X_train_prepare,y_train)
+# ---------------------------------
 
+print("Début entraînement Random Forest")
+
+model_random_forest.fit(
+    X_train_rf,
+    y_train_rf
+)
+
+print("Fin entraînement Random Forest")
+
+
+# ---------------------------------
 # Prédiction sur 2025
-prediction_random_forest = model_random_forest.predict(X_test_prepare)
+# ---------------------------------
 
+prediction_random_forest = model_random_forest.predict(
+    X_test_prepare
+)
+
+
+# ---------------------------------
 # Évaluation
-mae_random_forest = mean_absolute_error(y_test, prediction_random_forest)
-mape_random_forest = mean_absolute_percentage_error(y_test, prediction_random_forest)
+# ---------------------------------
 
-print(f"MAE Random Forest : {mae_random_forest:.0f} MW")
-print(f"MAPE Random Forest : {mape_random_forest * 100:.2f} %")
+mae_random_forest = mean_absolute_error(
+    y_test,
+    prediction_random_forest
+)
 
-# Enregistrement du model pour ne pas avoir à le réentréner à chaque fois
-joblib.dump(model_random_forest,"conso_predictor.pkl")
-joblib.dump(preprocesseur,"preprocesseur.pkl")
+mape_random_forest = mean_absolute_percentage_error(
+    y_test,
+    prediction_random_forest
+)
+
+print(
+    f"MAE Random Forest : {mae_random_forest:.0f} MW"
+)
+
+print(
+    f"MAPE Random Forest : {mape_random_forest * 100:.2f} %"
+)
+
+
+# ---------------------------------
+# Enregistrement du modèle
+# ---------------------------------
+
+joblib.dump(
+    model_random_forest,
+    "conso_predictor.pkl"
+)
+
+joblib.dump(
+    preprocesseur,
+    "preprocesseur.pkl"
+)
 
 # ---------------------------------
 # 4. Comparaison des modèles
