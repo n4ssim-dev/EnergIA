@@ -254,7 +254,11 @@ def ingest_dim_event(target_conn):
 # dim_meteo : depuis l'API ODRE temperature-quotidienne-regionale (Rapport.md).
 # ---------------------------------------------------------------------------
 
-DIM_METEO_COLUMNS = ["id_region", "date_meteo", "temperature_min", "temperature_max", "temperature_moy"]
+DIM_METEO_COLUMNS = [
+    "id_region", "date_meteo",
+    "temperature_min", "temperature_max", "temperature_moy",
+    "est_interpole",
+]
 
 
 def _date_chunks(date_debut, date_fin, chunk_days=ODRE_CHUNK_DAYS):
@@ -294,37 +298,119 @@ def _fetch_temperature_records(date_debut, date_fin):
             yield from future.result()
 
 
+def _jours_attendus(conn, date_debut, date_fin):
+    """(id_region, jour) présents dans fait_consommation sur la plage
+    demandée : ce sont les seuls jours où une météo manquante vaut la peine
+    d'être comblée."""
+    with conn.cursor() as cur:
+        cur.execute(
+            "SELECT DISTINCT id_region, DATE(date_heure) FROM fait_consommation "
+            "WHERE DATE(date_heure) BETWEEN %s AND %s",
+            (date_debut, date_fin),
+        )
+        return set(cur.fetchall())
+
+
+def _interpoler_temperature(conn, id_region, jour):
+    """Interpolation linéaire entre le dernier relevé réel avant `jour` et le
+    premier après, pour cette région. Renvoie None si l'une des deux bornes
+    n'existe pas encore (ex. jours très récents pas encore publiés par
+    l'API : mieux vaut laisser le trou pour un futur ingest qu'extrapoler)."""
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT date_meteo, temperature_min, temperature_max, temperature_moy
+            FROM dim_meteo
+            WHERE id_region = %s AND date_meteo < %s AND est_interpole = false
+            ORDER BY date_meteo DESC LIMIT 1
+            """,
+            (id_region, jour),
+        )
+        avant = cur.fetchone()
+
+        cur.execute(
+            """
+            SELECT date_meteo, temperature_min, temperature_max, temperature_moy
+            FROM dim_meteo
+            WHERE id_region = %s AND date_meteo > %s AND est_interpole = false
+            ORDER BY date_meteo ASC LIMIT 1
+            """,
+            (id_region, jour),
+        )
+        apres = cur.fetchone()
+
+    if avant is None or apres is None:
+        return None
+
+    jour_avant, tmin_avant, tmax_avant, tmoy_avant = avant
+    jour_apres, tmin_apres, tmax_apres, tmoy_apres = apres
+    ratio = (jour - jour_avant).days / (jour_apres - jour_avant).days
+
+    def interp(v_avant, v_apres):
+        return float(v_avant) + (float(v_apres) - float(v_avant)) * ratio
+
+    return interp(tmin_avant, tmin_apres), interp(tmax_avant, tmax_apres), interp(tmoy_avant, tmoy_apres)
+
+
 def ingest_dim_meteo(target_conn, date_debut, date_fin):
     with target_conn.cursor() as cur:
         cur.execute("SELECT code_insee, id_region FROM dim_regionale")
         region_ids = {str(code_insee): id_region for code_insee, id_region in cur.fetchall()}
 
         cur.execute(
-            "SELECT id_region, date_meteo FROM dim_meteo WHERE date_meteo BETWEEN %s AND %s",
+            "SELECT id_region, date_meteo, est_interpole FROM dim_meteo "
+            "WHERE date_meteo BETWEEN %s AND %s",
             (date_debut, date_fin),
         )
-        deja_presents = set(cur.fetchall())
+        deja_reel, deja_interpole = set(), set()
+        for id_region, date_meteo, est_interpole in cur.fetchall():
+            (deja_interpole if est_interpole else deja_reel).add((id_region, date_meteo))
 
-    rows = []
+    rows_reels = []
+    jours_avec_donnee = set()
     for record in _fetch_temperature_records(date_debut, date_fin):
         id_region = region_ids.get(str(record.get("code_insee_region")))
         if id_region is None:
             continue
         date_meteo = date.fromisoformat(record.get("date"))
-        if (id_region, date_meteo) in deja_presents:
+        jours_avec_donnee.add((id_region, date_meteo))
+        # une vraie mesure ODRE peut remplacer une valeur interpolée, mais
+        # pas re-écraser une vraie mesure déjà stockée.
+        if (id_region, date_meteo) in deja_reel:
             continue
-        rows.append((
+        rows_reels.append((
             id_region, record.get("date"),
             record.get("tmin"), record.get("tmax"), record.get("tmoy"),
+            False,
         ))
 
-    _upsert(target_conn, "dim_meteo", DIM_METEO_COLUMNS, ["date_meteo", "id_region"], rows)
+    _upsert(target_conn, "dim_meteo", DIM_METEO_COLUMNS, ["date_meteo", "id_region"], rows_reels)
+
+    # Jours attendus (vus dans fait_consommation) toujours sans donnée ODRE :
+    # on comble par interpolation plutôt que de laisser le trou filer jusqu'à
+    # l'entraînement (cf. gaps de fin de mois, permanents côté ODRE).
+    jours_attendus = _jours_attendus(target_conn, date_debut, date_fin)
+    a_interpoler = jours_attendus - deja_reel - deja_interpole - jours_avec_donnee
+
+    rows_interpolees = []
+    for id_region, jour in a_interpoler:
+        valeurs = _interpoler_temperature(target_conn, id_region, jour)
+        if valeurs is None:
+            continue
+        tmin, tmax, tmoy = valeurs
+        rows_interpolees.append((id_region, jour.isoformat(), tmin, tmax, tmoy, True))
+
+    _upsert(target_conn, "dim_meteo", DIM_METEO_COLUMNS, ["date_meteo", "id_region"], rows_interpolees)
 
     with target_conn.cursor() as cur:
         cur.execute("SELECT COUNT(*) FROM dim_meteo")
         total = cur.fetchone()[0]
 
-    return {"dim_meteo_ingerees": len(rows), "dim_meteo_total": total}
+    return {
+        "dim_meteo_ingerees": len(rows_reels),
+        "dim_meteo_interpolees": len(rows_interpolees),
+        "dim_meteo_total": total,
+    }
 
 
 router = APIRouter(prefix="/ingest")
