@@ -61,6 +61,8 @@ def charger_donnees_analytiques():
 
     return df
 
+
+
 if __name__ == "__main__":
     # ---------------------------------
     # Chargement

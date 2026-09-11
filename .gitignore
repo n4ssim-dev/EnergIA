@@ -3,6 +3,7 @@ python-service/.venv/
 python-service/venv/
 .venv/
 .env
+*.pkl
 
 # Cache Python
 python-service/**/__pycache__/
