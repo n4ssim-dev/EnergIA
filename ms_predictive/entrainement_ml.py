@@ -17,6 +17,26 @@ from sklearn.model_selection import train_test_split
 df = charger_donnees_analytiques()
 df_ml = preparer_dataframe_ml(df)
 
+# print("Nombre de valeurs non nulles :")
+# print(df["taux_impact_attendu"].notna().sum())
+
+# print("\nNombre de NaN :")
+# print(df["taux_impact_attendu"].isna().sum())
+
+# print("\nValeur minimum :")
+# print(df["taux_impact_attendu"].min())
+
+# print("\nValeur maximum :")
+# print(df["taux_impact_attendu"].max())
+
+# print("\nQuelques valeurs présentes :")
+# print(
+#     df["taux_impact_attendu"]
+#     .dropna()
+#     .value_counts()
+#     .sort_index()
+# )
+
 # ---------------------------------
 # Définition de la cible
 # ---------------------------------
@@ -42,6 +62,7 @@ X = df_ml[
         "temperature_moy",
         "taux_impact_attendu",
         "demographie",
+        "presence_evenement",
         
         # "conso_15min_precedente",
         # "conso_30min_precedente",
@@ -50,14 +71,14 @@ X = df_ml[
         # "conso_semaine_precedente",
     ]
 ]
-print("Nombre de NaN par colonne dans X :")
-print(X.isna().sum())
-print("\nColonnes contenant des NaN :")
-print(
-    X.isna().sum()[
-        X.isna().sum() > 0
-    ]
-)
+# print("Nombre de NaN par colonne dans X :")
+# print(X.isna().sum())
+# print("\nColonnes contenant des NaN :")
+# print(
+#     X.isna().sum()[
+#         X.isna().sum() > 0
+#     ]
+# )
 # ---------------------------------
 # Séparation temporelle
 # ---------------------------------
@@ -67,19 +88,19 @@ X_test = X[df_ml["annee"] == 2025]
 y_train = y[df_ml["annee"] < 2025]
 y_test = y[df_ml["annee"] == 2025]
 
-print("\nNaN dans X_train :")
-print(
-    X_train.isna().sum()[
-        X_train.isna().sum() > 0
-    ]
-)
+# print("\nNaN dans X_train :")
+# print(
+#     X_train.isna().sum()[
+#         X_train.isna().sum() > 0
+#     ]
+# )
 
-print("\nNaN dans X_test :")
-print(
-    X_test.isna().sum()[
-        X_test.isna().sum() > 0
-    ]
-)
+# print("\nNaN dans X_test :")
+# print(
+#     X_test.isna().sum()[
+#         X_test.isna().sum() > 0
+#     ]
+# )
 # ---------------------------------
 # Séparation des types de variables
 # ---------------------------------
@@ -109,6 +130,52 @@ variables_numeriques = [
     # "conso_semaine_precedente",
 ]
 
+meteo_nan = df_ml[
+    df_ml["temperature_moy"].isna()
+][
+    [
+        "id_region",
+        "date_heure",
+        "temperature_min",
+        "temperature_max",
+        "temperature_moy",
+    ]
+]
+
+print(meteo_nan.head(20))
+
+meteo_nan["date"] = meteo_nan["date_heure"].dt.date
+
+print(
+    meteo_nan[
+        ["id_region", "date"]
+    ]
+    .drop_duplicates()
+    .shape
+)
+
+print(
+    meteo_nan["id_region"]
+    .value_counts()
+)
+
+jours_meteo_manquants = (
+    meteo_nan[
+        ["id_region", "date"]
+    ]
+    .drop_duplicates()
+)
+
+print(
+    jours_meteo_manquants["id_region"]
+    .value_counts()
+)
+
+print(
+    jours_meteo_manquants
+    .sort_values(["id_region", "date"])
+    .head(50)
+)
 # ---------------------------------
 # Préparation de l'encodage
 # ---------------------------------
@@ -252,3 +319,4 @@ print(resultats)
         #         .sort_values("prob", ascending=False)
         #         .rename(columns={"prob": "probabilité"})
         #     )
+
