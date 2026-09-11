@@ -6,8 +6,8 @@ import { Router } from '@angular/router';
 @Injectable({ providedIn: 'root' })
 export class ChatService {
 
-    private url = "http://localhost:3001/api/normaliser"; 
-    //private url = "http://energia-gateway:3000/api/normaliser";
+    //private url = "http://localhost:3001/api/normaliser"; 
+    private url = "http://energia-gateway:3000/api/normaliser";
 
     constructor(private http: HttpClient, private router: Router) { };
     messages = signal([

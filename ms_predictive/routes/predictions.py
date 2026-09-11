@@ -2,145 +2,162 @@ import os
 import pandas as pd
 import joblib
 import sqlite3
+from datetime import datetime
+
+from fastapi import APIRouter, HTTPException, Path,Header
+
+router = APIRouter()
 
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from preparation_ml import preparer_dataframe_ml
+from analyse_donnees import charger_donnees_analytiques
 
 API_PASSWORD = os.getenv("API_PASSWORD", "5")
 
 router = APIRouter(prefix="/predictions")
 
 
-def creer_X_prediction(id_region, date, heure):
-    conn = sqlite3.connect("data/analytique.db")
-    
-    # --------------------------------
-    # 1. Récupérer la ligne cible
-    # --------------------------------
+def creer_X_prediction(id_region,date,heure):
+    try:
+        # ---------------------------------
+        # Chargement des données
+        # ---------------------------------
+        df = charger_donnees_analytiques()
 
-    requete = """
-        SELECT
-            dr.id_region,
-            dr.demographie,
-            dr.part_indus_lourde,
+        if df is None or df.empty:
+            raise ValueError("Aucune donnée chargée.")
 
-            dt.annee,
-            dt.saison,
-            dt.mois,
-            dt.date_,
-            dt.jour_semaine,
-            dt.heure,
-            dt.quart_heure,
-            dt.est_weekend,
-            dt.est_ferie
+        df_ml = preparer_dataframe_ml(df)
 
-        FROM dim_temps AS dt
-        CROSS JOIN dim_regionale AS dr
+        if df_ml is None or df_ml.empty:
+            raise ValueError("Le DataFrame ML est vide.")
 
-        WHERE dr.id_region = ?
-          AND dt.date_ = ?
-          AND dt.heure = ?
-    """
+        colonnes = [
+            "id_region",
+            "annee",
+            "saison",
+            "mois",
+            "jour_semaine",
+            "heure",
+            "quart_heure",
+            "est_weekend",
+            "est_ferie",
+            "temperature_min",
+            "temperature_max",
+            "type_event",
+            "impact_attendu",
+            "demographie",
+            "part_indus_lourde",
+            "conso_15min_precedente",
+            "conso_30min_precedente",
+            "conso_1h_precedente",
+            "conso_jour_precedent",
+            "conso_semaine_precedente",
+        ]
 
-    ligne = pd.read_sql_query(
-        requete,
-        conn,
-        params=(id_region, date, heure)
-    )
-
-    if ligne.empty:
-        raise ValueError(
-            f"Date/heure introuvable : {date} {heure}"
+        # Vérification des colonnes
+        colonnes_manquantes = [
+            col for col in colonnes if col not in df_ml.columns
+        ]
+        if colonnes_manquantes:
+            raise KeyError(
+                f"Colonnes manquantes : {colonnes_manquantes}"
+            )
+        # Conversion avant filtre
+        if isinstance(date, str):
+            date = datetime.strptime(date, "%Y-%m-%d")
+            
+        # Filtrage
+        filtre = (
+            (df_ml["id_region"] == id_region)
+            & (df_ml["annee"] == date.year)
+            & (df_ml["heure"] == heure)
         )
 
-    ligne = ligne.iloc[0]
+        X = df_ml.loc[filtre, colonnes]
 
-    # --------------------------------
-    # 2. Variables temporelles
-    # --------------------------------
+        if X.empty:
+            raise ValueError(
+                f"Date/heure introuvable : {date} {heure}"
+            )
 
-    annee = ligne["annee"]
-    saison = ligne["saison"]
-    mois = ligne["mois"]
-    jour_semaine = ligne["jour_semaine"]
-    quart_heure = ligne["quart_heure"]
-    est_weekend = ligne["est_weekend"]
-    est_ferie = ligne["est_ferie"]
+        return X
 
-    heure_prediction = ligne["heure"]
+    except KeyError as e:
+        print(f"Erreur de colonnes : {e}")
+        raise
 
-    # --------------------------------
-    # 3. Informations région
-    # --------------------------------
+    except ValueError as e:
+        print(f"Erreur de données : {e}")
+        raise
 
-    demographie = ligne["demographie"]
-    part_indus_lourde = ligne["part_indus_lourde"]
+    except Exception as e:
+        print(f"Erreur inattendue dans creer_X_prediction : {e}")
+        raise
 
-    # --------------------------------
-    # 4. Consommations précédentes
-    # --------------------------------
-
-    # À compléter avec la requête historique
-
-    conso_15min_precedente = ...
-    conso_30min_precedente = ...
-    conso_1h_precedente = ...
-    conso_jour_precedent = ...
-    conso_semaine_precedent = ...
-
-    # --------------------------------
-    # 5. Construction de X
-    # --------------------------------
-
-    X = pd.DataFrame([{
-        "id_region": id_region,
-        "annee": annee,
-        "saison": saison,
-        "mois": mois,
-        "jour_semaine": jour_semaine,
-        "heure": heure_prediction,
-        "quart_heure": quart_heure,
-        "est_weekend": est_weekend,
-        "est_ferie": est_ferie,
-
-        "temperature_min": temperature_min,
-        "temperature_max": temperature_max,
-
-        "type_event": type_event,
-        "impact_attendu": impact_attendu,
-
-        "demographie": demographie,
-        "part_indus_lourde": part_indus_lourde,
-
-        "conso_15min_precedente": conso_15min_precedente,
-        "conso_30min_precedente": conso_30min_precedente,
-        "conso_1h_precedente": conso_1h_precedente,
-        "conso_jour_precedent": conso_jour_precedent,
-        "conso_semaine_precedent": conso_semaine_precedent
-    }])
-
-    return X
-
-    
 
 @router.get("/consommation/{region_id}/{date}/{heure}")
 def consommation_region(
-    region_id: str = Query(..., description="Region"),
-    date: str = Query(..., description="Date au format YYYY-MM-DD"),
-    heure: str = Query(..., description="Heure au format HH:MM"),
+    region_id: str = Path(..., description="Région"),
+    date: str = Path(..., description="Date au format YYYY-MM-DD"),
+    heure: str = Path(..., description="Heure"),
+    x_api_key: str = Header(...)
 ):
-    """ Prédiction de la consommation d'une région à une date et un quart d'heure."""
+    """Prédiction de la consommation d'une région à une date et un quart heure."""
     
-    model = joblib.load("model_random_forest/conso_predictor.pkl")
-    preprocesseur = joblib.load("preprocesseur/preprocesseur.pkl")
+    if x_api_key != API_PASSWORD:
+        raise HTTPException(
+        status_code=401,
+        detail="API key invalide"
+    )
+    try:
+        # Validation de la date
+        date_obj = datetime.strptime(date, "%Y-%m-%d")
 
-    X_prepare = preprocesseur.transform(creer_X_prediction(region_id, date, heure))
+        # Chargement des modéles
+        model = joblib.load(
+            "model_random_forest/conso_predictor.pkl"
+        )
+        preprocesseur = joblib.load(
+            "preprocesseur/preprocesseur.pkl"
+        )
 
-    prediction = model.predict(X_prepare)
+        # Construction des données d'entrée
+        X = creer_X_prediction(
+            region_id,
+            date_obj,
+            heure,
+        )
 
-    return {
-          "prediction": prediction[0]
+        # Prétraitement
+        X_prepare = preprocesseur.transform(X)
+
+        # Prédiction
+        prediction = model.predict(X_prepare)
+
+        return {
+            "region_id": region_id,
+            "date": date,
+            "heure": heure,
+            "prediction": float(prediction[0])
         }
-   
+
+    except ValueError as e:
+        raise HTTPException(
+            status_code=404,
+            detail=str(e)
+        )
+
+    except FileNotFoundError as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Fichier introuvable : {e}"
+        )
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Erreur interne : {e}"
+        )
    
 
