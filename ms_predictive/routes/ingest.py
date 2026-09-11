@@ -319,7 +319,12 @@ def ingest_dim_meteo(target_conn, date_debut, date_fin):
         ))
 
     _upsert(target_conn, "dim_meteo", DIM_METEO_COLUMNS, ["date_meteo", "id_region"], rows)
-    return {"dim_meteo": len(rows)}
+
+    with target_conn.cursor() as cur:
+        cur.execute("SELECT COUNT(*) FROM dim_meteo")
+        total = cur.fetchone()[0]
+
+    return {"dim_meteo_ingerees": len(rows), "dim_meteo_total": total}
 
 
 router = APIRouter(prefix="/ingest")
