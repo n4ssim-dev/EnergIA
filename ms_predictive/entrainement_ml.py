@@ -5,6 +5,7 @@ from preparation_ml import preparer_dataframe_ml
 from analyse_donnees import charger_donnees_analytiques
 
 from sklearn.compose import ColumnTransformer
+from sklearn.impute import SimpleImputer
 from sklearn.preprocessing import OneHotEncoder
 from sklearn.linear_model import LinearRegression
 from sklearn.metrics import mean_absolute_error, mean_absolute_percentage_error
@@ -181,7 +182,21 @@ print(
 # ---------------------------------
 preprocesseur = ColumnTransformer(
     transformers=[
-        ("categoriel",OneHotEncoder(handle_unknown="ignore"),variables_categorielles)
+        ("categoriel", OneHotEncoder(handle_unknown="ignore"), variables_categorielles),
+        # temperature_min/max/moy : NaN quand dim_meteo n'a pas encore été
+        # ingérée pour ce jour/région (cf. gaps de fin de mois) -> médiane.
+        (
+            "meteo",
+            SimpleImputer(strategy="median"),
+            ["temperature_min", "temperature_max", "temperature_moy"],
+        ),
+        # taux_impact_attendu : absent = pas d'anomalie détectée par
+        # ingest_dim_event, donc NaN signifie "impact neutre" -> 0.
+        (
+            "evenement",
+            SimpleImputer(strategy="constant", fill_value=0),
+            ["taux_impact_attendu"],
+        ),
     ],
     remainder="passthrough")
 
