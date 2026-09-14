@@ -10,7 +10,7 @@ services:
       PORT: 8080
   
   ms_metier:
-    image: sosimplon/energia:${API_IMAGE_TAG:-api-latest}
+    image: sosimplon/energia:${METIER_IMAGE_TAG:-metier-latest}
     ports:
       - "${METIER_PORT:-8004}:8004"
     environment:
