@@ -10,11 +10,8 @@ OLLAMA_URL = "http://langage:11434"
 #OLLAMA_URL = "http://energia_ollama:11435"
 OLLAMA_MODEL = "qwen2.5:7b"
 
-# MS_MCP_URL = "http://mcp-fastapi:8003"
-# API_URL = "http://python-service:8000"
-
-MS_MCP_URL = "http://127.0.0.1:8001"
-API_URL = "http://127.0.0.1:8000"
+MS_MCP_URL = "http://127.0.0.1:8003"
+API_URL = "http://python-service:8080"
 
 
 API_PASSWORD = os.getenv("API_PASSWORD", "5")
