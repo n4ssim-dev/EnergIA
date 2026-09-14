@@ -6,7 +6,7 @@ from .contraintes import (puissance_reelle,calcul_puissance_max)
 from graph.datastore import DB_PATH
 from datetime import datetime
 
-DIJKSTRA_SERVICE_URL = "http://python-service:8000"
+DIJKSTRA_SERVICE_URL = "http://python-service:8080"
 
 def _connect():
     conn = sqlite3.connect(DB_PATH)
