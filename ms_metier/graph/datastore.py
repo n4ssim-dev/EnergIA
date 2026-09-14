@@ -6,7 +6,7 @@ from .models import Centrale, Liaison, Reactor, Region
 
 # analytics.db est produite par ms_data (extraction + chargement) ; ms_metier
 # la consomme en lecture seule depuis ms_data/data, comme ms_dijkstra.
-DB_PATH = Path(__file__).parent.parent.parent / "ms_data" / "data" / "analytics.db"
+DB_PATH = Path(__file__).parent.parent.parent / "ms_data" / "data" / "relationnal.db"
 
 # Conteneur central (centrales, régions, liaisons)
 # Pas de Graph ici : le calcul de plus court chemin reste dans ms_dijkstra,
