@@ -1,8 +1,8 @@
 import joblib
 import pandas as pd
 
-from preparation_ml import preparer_dataframe_ml
-from analyse_donnees import charger_donnees_analytiques
+from ms_predictive.entrainement_ml.preparation_ml import preparer_dataframe_ml
+from ms_predictive.entrainement_ml.analyse_donnees import charger_donnees_analytiques
 
 from sklearn.compose import ColumnTransformer
 from sklearn.impute import SimpleImputer
@@ -12,6 +12,9 @@ from sklearn.metrics import mean_absolute_error, mean_absolute_percentage_error
 # from sklearn.ensemble import RandomForestRegressor
 from sklearn.model_selection import train_test_split
 from sklearn.ensemble import RandomForestRegressor
+from pathlib import Path
+
+DOSSIER_SCRIPT = Path(__file__).resolve().parent
 
 model_random_forest = RandomForestRegressor(
     n_estimators=10,
@@ -270,9 +273,15 @@ print(f"MAPE Random Forest : {mape_random_forest * 100:.2f} %")
 
 
 # Enregistrement du modèle
-joblib.dump(model_random_forest, "conso_predictor.pkl")
+joblib.dump(
+    model_random_forest,
+    DOSSIER_SCRIPT / "conso_predictor.pkl"
+)
 
-joblib.dump(preprocesseur, "preprocesseur.pkl")
+joblib.dump(
+    preprocesseur,
+    DOSSIER_SCRIPT / "preprocesseur.pkl"
+)
 
 # ---------------------------------
 # 4. Comparaison des modèles

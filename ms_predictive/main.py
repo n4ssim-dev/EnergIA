@@ -3,12 +3,30 @@ load_dotenv()
 from fastapi import FastAPI
 from routes.ingest import router as ingest_router, get_target_connection
 from routes.diagnostics import router as diagnostics_router
-from routes.predictions import router as predictions_router
+from ms_predictive.routes.routes import router as predictions_router
 
 app = FastAPI()
 app.include_router(router=ingest_router)
 app.include_router(router=diagnostics_router)
 app.include_router(router=predictions_router)
+
+from fastapi import FastAPI
+
+from ms_predictive.routes.routes import router as prediction_router
+
+
+app = FastAPI(title="EnergIA - Microservice prédictif")
+
+
+app.include_router(prediction_router)
+
+
+@app.get("/")
+def accueil():
+    return {
+        "service": "ms_predictive",
+        "status": "ok"
+    }
 
 @app.get("/health")
 def health():
@@ -33,3 +51,4 @@ def health():
         "nombre_tables": len(tables),
         "rows_par_table": rows_par_table,
     }
+

@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from utils.db import connect_bdd, disconnect_bdd
 
-from preparation_ml import preparer_dataframe_ml
+from ms_predictive.entrainement_ml.preparation_ml import preparer_dataframe_ml
 
 # ---------------------------------
 # Chargement de la base analytique

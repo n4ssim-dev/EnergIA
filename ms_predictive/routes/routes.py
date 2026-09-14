@@ -8,9 +8,20 @@ from fastapi import APIRouter, HTTPException, Path,Header
 
 router = APIRouter()
 
+from ms_predictive.entrainement_ml.preparation_ml import preparer_dataframe_ml
+from ms_predictive.entrainement_ml.analyse_donnees import charger_donnees_analytiques
 
-from preparation_ml import preparer_dataframe_ml
-from analyse_donnees import charger_donnees_analytiques
+
+from pydantic import BaseModel
+
+from .prediction_ml import predire_periode
+
+
+router = APIRouter(
+    prefix="/prediction",
+    tags=["prediction"]
+)
+
 
 API_PASSWORD = os.getenv("API_PASSWORD", "5")
 
@@ -159,5 +170,38 @@ def consommation_region(
             status_code=500,
             detail=f"Erreur interne : {e}"
         )
-   
 
+    
+# ---------------------------------
+# Route de prédiction complète
+# ---------------------------------   
+
+class PredictionPeriodeRequest(BaseModel):
+    date_debut: datetime
+    date_fin: datetime
+    regions: list[str]
+
+
+@router.post("/periode")
+def prediction_periode(
+    requete: PredictionPeriodeRequest
+):
+    try:
+        resultats = predire_periode(
+            date_debut=requete.date_debut,
+            date_fin=requete.date_fin,
+            regions=requete.regions
+        )
+
+        return {
+            "date_debut": requete.date_debut,
+            "date_fin": requete.date_fin,
+            "regions": requete.regions,
+            "predictions": resultats
+        }
+
+    except ValueError as erreur:
+        raise HTTPException(
+            status_code=400,
+            detail=str(erreur)
+        )
