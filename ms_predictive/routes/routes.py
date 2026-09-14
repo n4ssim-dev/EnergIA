@@ -8,8 +8,8 @@ from fastapi import APIRouter, HTTPException, Path,Header
 
 router = APIRouter()
 
-from ms_predictive.entrainement_ml.preparation_ml import preparer_dataframe_ml
-from ms_predictive.entrainement_ml.analyse_donnees import charger_donnees_analytiques
+from .preparation_ml import preparer_dataframe_ml
+from .analyse_donnees import charger_donnees_analytiques
 
 
 from pydantic import BaseModel

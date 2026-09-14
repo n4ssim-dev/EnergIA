@@ -5,15 +5,16 @@ import pandas as pd
 
 from utils.db import connect_bdd, disconnect_bdd
 
-
 # ---------------------------------
 # Chargement du modèle
 # ---------------------------------
 
-DOSSIER_SCRIPT = Path(__file__).resolve().parent
+DOSSIER_ROUTES = Path(__file__).resolve().parent
+DOSSIER_MS_PREDICTIVE = DOSSIER_ROUTES.parent
 
-CHEMIN_MODELE = DOSSIER_SCRIPT / "conso_predictor.pkl"
-CHEMIN_PREPROCESSEUR = DOSSIER_SCRIPT / "preprocesseur.pkl"
+CHEMIN_MODELE = (DOSSIER_MS_PREDICTIVE/ "conso_predictor.pkl")
+
+CHEMIN_PREPROCESSEUR = (DOSSIER_MS_PREDICTIVE/ "preprocesseur.pkl")
 
 model = joblib.load(CHEMIN_MODELE)
 preprocesseur = joblib.load(CHEMIN_PREPROCESSEUR)

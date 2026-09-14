@@ -1,8 +1,8 @@
 import joblib
 import pandas as pd
 
-from ms_predictive.entrainement_ml.preparation_ml import preparer_dataframe_ml
-from ms_predictive.entrainement_ml.analyse_donnees import charger_donnees_analytiques
+from .preparation_ml import preparer_dataframe_ml
+from .analyse_donnees import charger_donnees_analytiques
 
 from sklearn.compose import ColumnTransformer
 from sklearn.impute import SimpleImputer
