@@ -4,18 +4,18 @@ services:
     image: n4ssim11/energia:${API_IMAGE_TAG:-api-latest}
     profiles: ["python-service"]
     ports:
-      - "${API_PORT:-8000}:8000"
+      - "${API_PORT:-8080}:8080"
     environment:
       HOST: 0.0.0.0
-      PORT: 8000
+      PORT: 8080
   
   ms_metier:
     image: sosimplon/energia:${METIER_IMAGE_TAG:-metier-latest}
     ports:
-      - "${METIER_PORT:-8006}:8006"
+      - "${METIER_PORT:-8004}:8004"
     environment:
       HOST: 0.0.0.0
-      PORT: 8006
+      PORT: 8004
 
   gateway:
     image: n4ssim11/energia:${GATEWAY_IMAGE_TAG:-gateway-latest}
@@ -37,6 +37,7 @@ services:
 # modèle chargement : docker exec -it energia_ollama ollama pull qwen2.5:7b
 
   ms_mcp:
+    image: n4ssim11/energia:${MCP_IMAGE_TAG:-mcp-latest}
     build:
       context: .
       dockerfile: ms_mcp/Dockerfile
@@ -50,6 +51,7 @@ services:
     restart: unless-stopped
 
   ms-data:
+    image: n4ssim11/energia:${DATA_IMAGE_TAG:-data-latest}
     build:
       context: ./ms_data
     profiles: ["ms-data"]
@@ -95,6 +97,7 @@ services:
 
 
   ms-predictive:
+    image: n4ssim11/energia:${PREDICTIVE_IMAGE_TAG:-predictive-latest}
     build:
       context: ./ms_predictive
     profiles: ["ms-predictive"]
@@ -141,6 +144,7 @@ services:
     restart: unless-stopped
 
   frontend:
+    image: n4ssim11/energia:${FRONTEND_IMAGE_TAG:-frontend-latest}
     build:
       context: .
       dockerfile: ./frontend/Dockerfile

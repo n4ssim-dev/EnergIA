@@ -12,6 +12,20 @@ def preparer_dataframe_ml(df):
     df_ml["date_heure"] = pd.to_datetime(
     df_ml["date_heure"])
 
+
+    # Présence d'un événement
+    df_ml["presence_evenement"] = (
+        df_ml["taux_impact_attendu"]
+        .notna()
+        .astype(int)
+    )
+
+    # Absence d'événement = impact nul
+    df_ml["taux_impact_attendu"] = (
+        df_ml["taux_impact_attendu"]
+        .fillna(0)
+    )
+
     # Création de la feature heure
     df_ml["heure"] = (
     df_ml["date_heure"].dt.hour

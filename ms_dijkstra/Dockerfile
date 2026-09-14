@@ -23,7 +23,7 @@ COPY ./ms_dijkstra .
 COPY ./ms_data/data /ms_data/data
 
 # Exposer le port de FastAPI
-EXPOSE 8000
+EXPOSE 8080
 
 # Lancer l'application
-CMD ["uv", "run", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+CMD ["uv", "run", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8080", "--reload"]

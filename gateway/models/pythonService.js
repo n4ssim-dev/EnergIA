@@ -1,7 +1,6 @@
 const axios = require("axios");
 
-const PYTHON_SERVICE_URL = "http://energia-api:8000";  
-//const PYTHON_SERVICE_URL = "http://127.0.0.1:8000"; 
+const PYTHON_SERVICE_URL = "http://energia-api:8080";  
 
 const MCP_FASTAPI_SERVICE_URL = "http://energia-mcp-fastapi:8003"; 
  //const MCP_FASTAPI_SERVICE_URL = "http://127.0.0.1:8001";  
