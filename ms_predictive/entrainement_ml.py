@@ -239,85 +239,40 @@ print(f"MAPE baseline naïve : {mape_baseline * 100:.2f} %")
 #------------------------------------------------------------------
 
 # Création d'un échantillon aléatoire de 100 000 lignes
-echantillon_rf = X_train.sample(
-    n=100000,
-    random_state=42
-)
+echantillon_rf = X_train.sample(n=100000, random_state=42)
 
 # On récupère les y correspondants
-y_train_rf = y_train.loc[
-    echantillon_rf.index
-]
+y_train_rf = y_train.loc[echantillon_rf.index]
 
 # On applique le même préprocesseur que pour le reste du modèle
-X_train_rf = preprocesseur.transform(
-    echantillon_rf
-)
+X_train_rf = preprocesseur.transform(echantillon_rf)
 
 # Création du modèle
-model_random_forest = RandomForestRegressor(
-    random_state=42
-)
+model_random_forest = RandomForestRegressor(random_state=42)
 
-# ---------------------------------
 # Entraînement
-# ---------------------------------
-
 print("Début entraînement Random Forest")
 
-model_random_forest.fit(
-    X_train_rf,
-    y_train_rf
-)
+model_random_forest.fit(X_train_rf, y_train_rf)
 
 print("Fin entraînement Random Forest")
 
-
-# ---------------------------------
 # Prédiction sur 2025
-# ---------------------------------
+prediction_random_forest = model_random_forest.predict(X_test_prepare)
 
-prediction_random_forest = model_random_forest.predict(
-    X_test_prepare
-)
-
-
-# ---------------------------------
 # Évaluation
-# ---------------------------------
+mae_random_forest = mean_absolute_error(y_test, prediction_random_forest)
 
-mae_random_forest = mean_absolute_error(
-    y_test,
-    prediction_random_forest
-)
+mape_random_forest = mean_absolute_percentage_error(y_test, prediction_random_forest)
 
-mape_random_forest = mean_absolute_percentage_error(
-    y_test,
-    prediction_random_forest
-)
-
-print(
-    f"MAE Random Forest : {mae_random_forest:.0f} MW"
-)
-
-print(
-    f"MAPE Random Forest : {mape_random_forest * 100:.2f} %"
-)
+print(f"MAE Random Forest : {mae_random_forest:.0f} MW")
+print(f"MAPE Random Forest : {mape_random_forest * 100:.2f} %")
 
 
-# ---------------------------------
 # Enregistrement du modèle
-# ---------------------------------
+joblib.dump(model_random_forest, "conso_predictor.pkl")
 
-joblib.dump(
-    model_random_forest,
-    "conso_predictor.pkl"
-)
-
-joblib.dump(
-    preprocesseur,
-    "preprocesseur.pkl"
-)
+joblib.dump(preprocesseur, "preprocesseur.pkl")
 
 # ---------------------------------
 # 4. Comparaison des modèles
