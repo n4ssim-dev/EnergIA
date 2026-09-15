@@ -3,7 +3,7 @@ from pathlib import Path
 import joblib
 import pandas as pd
 
-from db import connect_bdd, disconnect_bdd
+from ms_predictive.utils.db import connect_bdd, disconnect_bdd
 
 # ---------------------------------
 # Chargement du modèle
