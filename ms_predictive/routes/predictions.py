@@ -6,11 +6,8 @@ from datetime import datetime
 
 from fastapi import APIRouter, HTTPException, Path,Header
 
-router = APIRouter()
-
 from .preparation_ml import preparer_dataframe_ml
 from .analyse_donnees import charger_donnees_analytiques
-
 
 from pydantic import BaseModel
 
@@ -18,14 +15,12 @@ from .prediction_ml import predire_periode
 
 
 router = APIRouter(
-    prefix="/prediction",
+    prefix="/predictions",
     tags=["prediction"]
 )
 
 
 API_PASSWORD = os.getenv("API_PASSWORD", "5")
-
-router = APIRouter(prefix="/predictions")
 
 
 def creer_X_prediction(id_region,date,heure):

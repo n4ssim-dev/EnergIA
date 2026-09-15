@@ -3,7 +3,7 @@ from pathlib import Path
 import joblib
 import pandas as pd
 
-from ms_predictive.utils.db import connect_bdd, disconnect_bdd
+from utils.db import connect_bdd, disconnect_bdd
 
 # ---------------------------------
 # Chargement du modèle
@@ -11,10 +11,11 @@ from ms_predictive.utils.db import connect_bdd, disconnect_bdd
 
 DOSSIER_ROUTES = Path(__file__).resolve().parent
 DOSSIER_MS_PREDICTIVE = DOSSIER_ROUTES.parent
+DOSSIER_MODELE = DOSSIER_MS_PREDICTIVE / "model_random_forest"
 
-CHEMIN_MODELE = (DOSSIER_MS_PREDICTIVE/ "conso_predictor.pkl")
+CHEMIN_MODELE = (DOSSIER_MODELE / "conso_predictor.pkl")
 
-CHEMIN_PREPROCESSEUR = (DOSSIER_MS_PREDICTIVE/ "preprocesseur.pkl")
+CHEMIN_PREPROCESSEUR = (DOSSIER_MODELE / "preprocesseur.pkl")
 
 model = joblib.load(CHEMIN_MODELE)
 preprocesseur = joblib.load(CHEMIN_PREPROCESSEUR)
@@ -231,14 +232,16 @@ def predire_periode(date_debut, date_fin, regions):
 
     return resultats
 
-resultats = predire_periode(
-    "2026-08-30 08:00:00",
-    "2026-08-30 12:00:00",
-    [
-        "occitanie",
-        "nouvelle_aquitaine",
-        "ile_de_france",
-    ]
-)
 
-print(resultats)
+if __name__ == "__main__":
+    resultats = predire_periode(
+        "2026-08-30 08:00:00",
+        "2026-08-30 12:00:00",
+        [
+            "occitanie",
+            "nouvelle_aquitaine",
+            "ile_de_france",
+        ]
+    )
+
+    print(resultats)

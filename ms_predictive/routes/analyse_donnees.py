@@ -2,7 +2,7 @@ import sqlite3
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
-from ms_predictive.utils.db import connect_bdd, disconnect_bdd
+from utils.db import connect_bdd, disconnect_bdd
 
 from .preparation_ml import preparer_dataframe_ml
 

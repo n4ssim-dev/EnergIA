@@ -3,23 +3,12 @@ load_dotenv()
 from fastapi import FastAPI
 from routes.ingest import router as ingest_router, get_target_connection
 from routes.diagnostics import router as diagnostics_router
-from routes.routes import router as predictions_router
+from routes.predictions import router as predictions_router
 
-app = FastAPI()
+app = FastAPI(title="EnergIA - Microservice prédictif")
 app.include_router(router=ingest_router)
 app.include_router(router=diagnostics_router)
 app.include_router(router=predictions_router)
-
-
-from fastapi import FastAPI
-
-
-
-
-app = FastAPI(title="EnergIA - Microservice prédictif")
-
-
-
 
 @app.get("/")
 def accueil():
