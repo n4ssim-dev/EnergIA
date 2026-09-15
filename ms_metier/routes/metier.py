@@ -1,7 +1,13 @@
 from typing import Optional
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
-
+import os
+import httpx
+PREDICTIVE_URL = os.getenv(
+    "PREDICTIVE_URL",
+    "http://ms-predictive:8005"
+)
+from .predictive_client import recuperer_predictions
 from graph.datastore import get_store
 from .contraintes import puissance_reelle
 from .calcul import (
@@ -394,7 +400,7 @@ def _simulation_complete_region_heure(
             "production_reelle_fournie_mw": production_reelle_fournie,
         })
 
-    besoin_non_couvert = max(demande_mw - total_nucleaire_reellement_fourni, 0)
+    besoin_non_couvert = round(max(demande_mw - total_nucleaire_reellement_fourni, 0),2)
 
     return {
         "region": region_id,
@@ -411,44 +417,197 @@ def _simulation_complete_region_heure(
 
 @router.post("/simulation-complete")
 def simulation_complete(
-    date: str = Query(..., description="Jour ingéré (YYYY-MM-DD) via POST /database/ingest-eco2mix"),
+    date: str = Query(
+        ...,
+        description="Jour ingéré (YYYY-MM-DD) via POST /database/ingest-eco2mix"
+    ),
     filtre: Optional[SimulationCompleteFiltre] = None,
 ):
     store = get_store()
-    donnees_consommation = charger_journee_reference(date)
-    donnees_non_pilotables = charger_journee_reference_hors_nucleaire(date)
 
-    production_nucleaire = charger_production_nucleaire()
+    # ---------------------------------
+    # Chargement des données
+    # ---------------------------------
+
+    donnees_consommation = charger_journee_reference(date)
+    donnees_non_pilotables = (charger_journee_reference_hors_nucleaire(date))
+    production_nucleaire = (charger_production_nucleaire())
+
+    # ---------------------------------
+    # Préparation des données métier
+    # ---------------------------------
 
     journee = parcourir_journee(donnees_consommation)
-    production_solaire = recuperer_donnees_solaires(donnees_non_pilotables)
-    production_eolien = recuperer_donnees_eolien(donnees_non_pilotables)
-    production_non_pilotable = production_hors_nucleaire(production_solaire, production_eolien)
-    besoins_residuels = calcul_besoins_residuels(journee, production_non_pilotable)
+
+    production_solaire = (
+        recuperer_donnees_solaires(donnees_non_pilotables)
+    )
+
+    production_eolien = (
+        recuperer_donnees_eolien(donnees_non_pilotables)
+    )
+
+    production_non_pilotable = (
+        production_hors_nucleaire(production_solaire, production_eolien)
+    )
+
+    besoins_residuels = (
+        calcul_besoins_residuels(journee, production_non_pilotable)
+    )
+
+    # ---------------------------------
+    # Régions et timestamps disponibles
+    # ---------------------------------
 
     regions_disponibles = list(besoins_residuels.keys())
+
     timestamps = donnees_consommation["timestamps"]
 
-    region_filtre = filtre.region if filtre else None
-    heure_filtre = filtre.heure if filtre else None
+    # ---------------------------------
+    # Appel au microservice prédictif
+    # ---------------------------------
+
+    predictions = recuperer_predictions(date, regions_disponibles)
+
+    # ---------------------------------
+    # Récupération des filtres
+    # ---------------------------------
+
+    region_filtre = (
+        filtre.region
+        if filtre
+        else None
+    )
+
+    heure_filtre = (
+        filtre.heure
+        if filtre
+        else None
+    )
+
+    # ---------------------------------
+    # Vérification de la région
+    # ---------------------------------
 
     if region_filtre is not None:
+
         if region_filtre not in regions_disponibles:
             raise HTTPException(
-                status_code=404, detail=f"Région '{region_filtre}' introuvable"
+                status_code=404,
+                detail=(
+                    f"Région "
+                    f"'{region_filtre}' introuvable"
+                )
             )
+
         regions_a_traiter = [region_filtre]
+
     else:
-        regions_a_traiter = regions_disponibles
+
+        regions_a_traiter = (regions_disponibles)
+
+    # ---------------------------------
+    # Vérification de l'heure
+    # ---------------------------------
 
     if heure_filtre is not None:
+
         if heure_filtre not in timestamps:
             raise HTTPException(
-                status_code=404, detail=f"Heure '{heure_filtre}' introuvable"
+                status_code=404,
+                detail=(
+                    f"Heure "
+                    f"'{heure_filtre}' introuvable"
+                )
             )
-        indices_a_traiter = [timestamps.index(heure_filtre)]
+
+        indices_a_traiter = [
+            timestamps.index(heure_filtre)
+        ]
+
     else:
-        indices_a_traiter = list(range(len(timestamps)))
+
+        indices_a_traiter = list(
+            range(len(timestamps))
+        )
+
+    # ---------------------------------
+    # Recherche de la prédiction filtrée
+    # ---------------------------------
+
+    prediction_filtree = None
+
+    if (
+        region_filtre is not None
+        and heure_filtre is not None
+    ):
+
+        for prediction in predictions:
+
+            heure_prediction = (
+                prediction["date_heure"][11:16]
+            )
+
+            if (
+                prediction["id_region"]
+                == region_filtre
+                and heure_prediction
+                == heure_filtre
+            ):
+                prediction_filtree = prediction
+                break
+
+        print("Prédiction filtrée :", prediction_filtree)
+
+    # ---------------------------------
+    # Calcul du besoin résiduel prédit
+    # ---------------------------------
+
+    besoin_residuel_predit = None
+
+    if prediction_filtree is not None:
+
+        index_heure = timestamps.index(
+            heure_filtre
+        )
+
+        production_non_pilotable_heure = (
+            production_non_pilotable[
+                region_filtre
+            ][index_heure]
+        )
+
+        besoin_residuel_predit = round(
+            prediction_filtree[
+                "consommation_predite_mw"
+            ]
+            - production_non_pilotable_heure,
+            2
+        )
+
+        print(
+            "Besoin résiduel prédit :",
+            besoin_residuel_predit,
+            type(besoin_residuel_predit)
+        )
+
+
+    if (
+        besoin_residuel_predit is not None
+        and region_filtre is not None
+        and heure_filtre is not None
+    ):
+
+        index_heure = timestamps.index(
+            heure_filtre
+        )
+
+        besoins_residuels[
+            region_filtre
+        ][index_heure] = besoin_residuel_predit
+    # ---------------------------------
+    # Simulation métier actuelle
+    # ---------------------------------
 
     resultats = {
         region_id: [
@@ -465,8 +624,21 @@ def simulation_complete(
         for region_id in regions_a_traiter
     }
 
+    # ---------------------------------
+    # Réponse
+    # ---------------------------------
+
     return {
         "regions": regions_a_traiter,
-        "heures": [timestamps[index] for index in indices_a_traiter],
+
+        "heures": [
+            timestamps[index]
+            for index in indices_a_traiter
+        ],
+
+        "prediction_filtree": (prediction_filtree),
+
+        "besoin_residuel_predit_mw": (besoin_residuel_predit),
+
         "resultats": resultats,
     }

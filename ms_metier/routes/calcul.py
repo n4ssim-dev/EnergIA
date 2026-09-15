@@ -209,7 +209,10 @@ def repartir_demande(
 
     return {
         "allocation": allocation,
-        "unsatisfied_mw": demand_left
+        "unsatisfied_mw": round(
+            demand_left,
+            2
+        )
     }
 # ---------------------------------------------------------------------------
 # 10. Calcule longitude et latitude
