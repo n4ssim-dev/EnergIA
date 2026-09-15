@@ -2,6 +2,7 @@ import csv
 import json
 import os
 import sqlite3
+import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date, timedelta
 from pathlib import Path
@@ -34,7 +35,10 @@ ODRE_CHUNK_DAYS = 14
 # delà). Avec ce plafond fixe, la seule façon d'accélérer une plage large
 # (une année ~= 2 200 requêtes) est de paralléliser les pages plutôt que de
 # les attendre une par une.
-ODRE_MAX_CONCURRENCY = 8
+# Réduit de 8 à 3 : à 8 en parallèle, l'API renvoie très vite du 429 Too Many
+# Requests sur des plages de plusieurs mois/années (voir _fetch_odre_page
+# pour la gestion du retry/backoff qui absorbe les 429 restants).
+ODRE_MAX_CONCURRENCY = 3
 # Grille fixe du dataset : régions RTE métropole (hors Corse) x pas de 30 min.
 ODRE_REGIONS_COUNT = 12
 ODRE_SLOTS_PER_DAY = 48
@@ -485,20 +489,27 @@ def _expected_page_count(chunk_debut, chunk_fin):
     return lignes_attendues // ODRE_PAGE_SIZE + 2
 
 
-def _fetch_odre_page(client, url, where, offset):
-    # order_by explicite : sans lui, le tri par défaut n'est pas garanti
-    # stable entre deux appels offset différents faits en parallèle, ce qui
-    # peut faire apparaître la même ligne sur deux pages (constaté : quelques
-    # doublons sur une plage d'un an sans order_by). INSERT OR REPLACE
-    # dédoublonne de toute façon sur (id_region, date_heure), mais autant
-    # avoir une pagination correcte à la source.
-    response = client.get(
-        url,
-        params={
-            "where": where, "limit": ODRE_PAGE_SIZE, "offset": offset,
-            "order_by": "date_heure,code_insee_region",
-        },
-    )
+def _fetch_odre_page(client, url, where, offset, max_retries=6):
+    """Récupère une page de résultats, avec retry/backoff sur 429 Too Many
+    Requests. Respecte l'en-tête Retry-After si l'API le fournit, sinon
+    attend un délai qui double à chaque tentative (1s, 2s, 4s, ...)."""
+    params = {
+        "where": where, "limit": ODRE_PAGE_SIZE, "offset": offset,
+        "order_by": "date_heure,code_insee_region",
+    }
+    delay = 1.0
+    for attempt in range(max_retries):
+        response = client.get(url, params=params)
+        if response.status_code == 429:
+            retry_after = response.headers.get("Retry-After")
+            wait = float(retry_after) if retry_after else delay
+            time.sleep(wait)
+            delay *= 2
+            continue
+        response.raise_for_status()
+        return response.json().get("results", [])
+    # Dernière tentative : on laisse raise_for_status lever la vraie erreur
+    # si l'API répond encore 429 après max_retries essais.
     response.raise_for_status()
     return response.json().get("results", [])
 

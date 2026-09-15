@@ -313,9 +313,19 @@ def get_besoins_residuels(
 
 
 def _simulation_complete_region_heure(
-    region_id, index, store, donnees_consommation, besoins_residuels, production_nucleaire
+    region_id, index, store, donnees_consommation, besoins_residuels,
+    production_nucleaire, etat_centrales
 ):
-    """Calcule la répartition nucléaire réelle pour une région et un quart d'heure donnés."""
+    """Calcule la répartition nucléaire réelle pour une région et un quart
+    d'heure donnés.
+
+    etat_centrales est désormais reçu en paramètre et modifié en place
+    (jamais réinitialisé ici) : c'est ce qui permet à l'appelant de simuler
+    la journée dans l'ordre, pas à pas, pour que chaque centrale parte bien
+    de son état réel au pas précédent (et non de
+    initial_output_mw_at_23_45_previous_day à chaque appel, ce qui donnait
+    des résultats faux pour toute heure différente de 00:00).
+    """
 
     demande_mw = besoins_residuels[region_id][index]
 
@@ -331,7 +341,6 @@ def _simulation_complete_region_heure(
     )
 
     candidats = []
-    etat_centrales = {}
 
     for plant_id in candidats_ids:
 
@@ -343,10 +352,14 @@ def _simulation_complete_region_heure(
 
         centrale_temporelle = store.centrales.get(plant_id)
 
-        puissance_precedente = centrale_temporelle.initial_output_mw_at_23_45_previous_day
-        rampUp = centrale_temporelle.max_ramp_up_mw_per_15_min
+        # Initialisation UNE SEULE FOIS par centrale, au tout premier pas où
+        # on la rencontre (normalement index 0) : ensuite on reprend
+        # toujours la valeur laissée par le pas précédent dans etat_centrales.
+        if plant_id not in etat_centrales:
+            etat_centrales[plant_id] = centrale_temporelle.initial_output_mw_at_23_45_previous_day
 
-        etat_centrales[plant_id] = puissance_precedente
+        puissance_precedente = etat_centrales[plant_id]
+        rampUp = centrale_temporelle.max_ramp_up_mw_per_15_min
 
         candidats.append({
             "plant_id": plant_id,
@@ -382,6 +395,7 @@ def _simulation_complete_region_heure(
             0
         )
 
+        # Mise à jour de l'état PARTAGÉ : le pas suivant repartira d'ici.
         etat_centrales[plant_id] = nouvelle_puissance_reelle
         total_nucleaire_reellement_fourni += production_reelle_fournie
 
@@ -405,7 +419,7 @@ def _simulation_complete_region_heure(
         "allocations_apres_contraintes": allocations_reelles,
         "production_nucleaire_reellement_fournie_mw": total_nucleaire_reellement_fourni,
         "besoin_non_couvert_mw": besoin_non_couvert,
-        "etat_centrales_apres_calcul": etat_centrales,
+        "etat_centrales_apres_calcul": dict(etat_centrales),
     }
 
 
@@ -450,20 +464,32 @@ def simulation_complete(
     else:
         indices_a_traiter = list(range(len(timestamps)))
 
-    resultats = {
-        region_id: [
-            _simulation_complete_region_heure(
+    # Correction : on simule TOUJOURS depuis l'index 0 jusqu'au dernier index
+    # demandé, dans l'ordre, pour que etat_centrales reflète la vraie
+    # trajectoire de la journée à chaque pas. Filtrer directement sur
+    # indices_a_traiter sans rejouer les pas précédents donnait un résultat
+    # faux pour toute heure != 00:00 (chaque centrale repartait de
+    # initial_output_mw_at_23_45_previous_day au lieu de son état réel).
+    dernier_index_necessaire = max(indices_a_traiter)
+    indices_a_simuler = set(indices_a_traiter)
+
+    resultats = {}
+    for region_id in regions_a_traiter:
+        etat_centrales = {}
+        resultats_region = []
+        for index in range(dernier_index_necessaire + 1):
+            resultat_pas = _simulation_complete_region_heure(
                 region_id,
                 index,
                 store,
                 donnees_consommation,
                 besoins_residuels,
                 production_nucleaire,
+                etat_centrales,
             )
-            for index in indices_a_traiter
-        ]
-        for region_id in regions_a_traiter
-    }
+            if index in indices_a_simuler:
+                resultats_region.append(resultat_pas)
+        resultats[region_id] = resultats_region
 
     return {
         "regions": regions_a_traiter,
