@@ -20,6 +20,8 @@ CHEMIN_PREPROCESSEUR = (DOSSIER_MODELE / "preprocesseur.pkl")
 model = joblib.load(CHEMIN_MODELE)
 preprocesseur = joblib.load(CHEMIN_PREPROCESSEUR)
 
+print("Features attendues par le préprocesseur :")
+print(preprocesseur.feature_names_in_)
 
 # ---------------------------------
 # Récupération des informations régionales
