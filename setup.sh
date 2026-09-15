@@ -8,7 +8,7 @@ cd "$(dirname "${BASH_SOURCE[0]}")"
 
 # --- Services that ship a .env.example to seed a local .env from ----------
 ENV_TEMPLATE_DIRS=(. ms_data ms_dijkstra ms_mcp ms_metier ms_predictive)
-OLLAMA_CONTAINER="energia_ollama"
+OLLAMA_URL="http://localhost:11435"
 OLLAMA_MODEL="qwen2.5:7b"
 
 BOLD="\033[1m"; DIM="\033[2m"; GREEN="\033[32m"; YELLOW="\033[33m"; RED="\033[31m"; RESET="\033[0m"
@@ -21,7 +21,7 @@ fail()  { printf "  ${RED}[ÉCHEC]${RESET}    %s\n" "$1"; }
 
 # Check des prérequis (docker, git)
 step "Vérification des prérequis"
-for bin in docker git; do
+for bin in docker git curl; do
   if command -v "$bin" >/dev/null 2>&1; then
     ok "$bin trouvé"
   else
@@ -61,14 +61,30 @@ step "Démarrage de la stack Docker"
 docker compose up -d --build
 ok "docker compose up terminé"
 
-# Pull du modèle Ollama (skip si déja présent)
+# Pull du modèle Ollama via l'API HTTP (skip si déjà présent) : plus fiable
+# que `docker exec ... ollama`, dont le binaire ne se trouve pas toujours
+# dans $PATH selon l'image utilisée (ex. la variante Intel iGPU en local).
 step "Vérification du modèle Ollama ($OLLAMA_MODEL)"
-if docker exec "$OLLAMA_CONTAINER" ollama list 2>/dev/null | awk '{print $1}' | grep -qx "$OLLAMA_MODEL"; then
+ollama_ready=false
+for _ in $(seq 1 30); do
+  if curl -sf "$OLLAMA_URL/api/tags" >/dev/null 2>&1; then
+    ollama_ready=true
+    break
+  fi
+  sleep 2
+done
+
+if [ "$ollama_ready" = false ]; then
+  fail "l'API Ollama ($OLLAMA_URL) ne répond pas"
+elif curl -s "$OLLAMA_URL/api/tags" | grep -qF "\"$OLLAMA_MODEL\""; then
   skip "$OLLAMA_MODEL déjà téléchargé"
 else
   create "téléchargement de $OLLAMA_MODEL (cela peut prendre du temps)..."
-  docker exec "$OLLAMA_CONTAINER" ollama pull "$OLLAMA_MODEL"
-  ok "$OLLAMA_MODEL téléchargé"
+  if curl -s -X POST "$OLLAMA_URL/api/pull" -d "{\"name\":\"$OLLAMA_MODEL\"}" | tail -n1 | grep -qF '"status":"success"'; then
+    ok "$OLLAMA_MODEL téléchargé"
+  else
+    fail "échec du téléchargement de $OLLAMA_MODEL"
+  fi
 fi
 
 # sommaire & affichage des ports des apis
