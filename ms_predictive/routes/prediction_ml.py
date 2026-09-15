@@ -3,7 +3,7 @@ from pathlib import Path
 import joblib
 import pandas as pd
 
-from utils.db import connect_bdd, disconnect_bdd
+from db import connect_bdd, disconnect_bdd
 
 # ---------------------------------
 # Chargement du modèle
