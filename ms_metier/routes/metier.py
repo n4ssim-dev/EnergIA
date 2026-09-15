@@ -331,10 +331,7 @@ def _simulation_complete_region_heure(
         if r["id"] == region_id
     )
 
-    candidats_ids = (
-        region["local_plant_ids"]
-        + region["external_entry_plant_ids"]
-    )
+    candidats_ids = region["local_plant_ids"]
 
     candidats = []
     etat_centrales = {}
@@ -363,6 +360,13 @@ def _simulation_complete_region_heure(
         })
 
     resultat_repartition = repartir_demande(demande_mw, candidats, etat_centrales.copy())
+    besoin_restant = resultat_repartition["unsatisfied_mw"]
+
+    if besoin_restant > 0:
+        print(
+            "Besoin non couvert localement, "
+            "recherche de centrales extérieures"
+        )
 
     allocations_reelles = []
     total_nucleaire_reellement_fourni = 0
