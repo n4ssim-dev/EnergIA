@@ -119,7 +119,7 @@ def consommation_region(
             "model_random_forest/conso_predictor.pkl"
         )
         preprocesseur = joblib.load(
-            "preprocesseur/preprocesseur.pkl"
+            "model_random_forest/preprocesseur.pkl"
         )
 
         # Construction des données d'entrée
