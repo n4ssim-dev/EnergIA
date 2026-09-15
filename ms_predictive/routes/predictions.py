@@ -2,7 +2,7 @@ import os
 import pandas as pd
 import joblib
 import sqlite3
-from datetime import datetime
+from datetime import datetime, time
 
 from fastapi import APIRouter, HTTPException, Path,Header
 
@@ -23,7 +23,7 @@ router = APIRouter(
 API_PASSWORD = os.getenv("API_PASSWORD", "5")
 
 
-def creer_X_prediction(id_region,date,heure):
+def creer_X_prediction(id_region, date, heure):
     try:
         # ---------------------------------
         # Chargement des données
@@ -58,28 +58,36 @@ def creer_X_prediction(id_region,date,heure):
 
         # Vérification des colonnes
         colonnes_manquantes = [
-            col for col in colonnes if col not in df_ml.columns
+            col for col in colonnes
+            if col not in df_ml.columns
         ]
+
         if colonnes_manquantes:
             raise KeyError(
                 f"Colonnes manquantes : {colonnes_manquantes}"
             )
-        # Conversion avant filtre
-        if isinstance(date, str):
-            date = datetime.strptime(date, "%Y-%m-%d")
-            
-        # Filtrage
+
+        # Construction du datetime exact recherché
+        date_heure_recherchee = pd.Timestamp.combine(
+            date.date(),
+            heure
+        )
+
+        # Filtrage exact
         filtre = (
             (df_ml["id_region"] == id_region)
-            & (df_ml["annee"] == date.year)
-            & (df_ml["heure"] == heure)
+            & (
+                df_ml["date_heure"]
+                == date_heure_recherchee
+            )
         )
 
         X = df_ml.loc[filtre, colonnes]
 
         if X.empty:
             raise ValueError(
-                f"Date/heure introuvable : {date} {heure}"
+                f"Date/heure introuvable : "
+                f"{date_heure_recherchee}"
             )
 
         return X
@@ -93,15 +101,17 @@ def creer_X_prediction(id_region,date,heure):
         raise
 
     except Exception as e:
-        print(f"Erreur inattendue dans creer_X_prediction : {e}")
+        print(
+            "Erreur inattendue dans "
+            f"creer_X_prediction : {e}"
+        )
         raise
-
 
 @router.get("/consommation/{region_id}/{date}/{heure}")
 def consommation_region(
     region_id: str = Path(..., description="Région"),
     date: str = Path(..., description="Date au format YYYY-MM-DD"),
-    heure: str = Path(..., description="Heure"),
+    heure: time = Path(..., description="Heure au format HH:MM:SS"),
     x_api_key: str = Header(...)
 ):
     """Prédiction de la consommation d'une région à une date et un quart heure."""
@@ -139,7 +149,7 @@ def consommation_region(
         return {
             "region_id": region_id,
             "date": date,
-            "heure": heure,
+            "heure": heure.isoformat(),
             "prediction": float(prediction[0])
         }
 
