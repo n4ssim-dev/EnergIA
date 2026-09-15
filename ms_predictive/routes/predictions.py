@@ -50,15 +50,10 @@ def creer_X_prediction(id_region,date,heure):
             "est_ferie",
             "temperature_min",
             "temperature_max",
-            "type_event",
-            "impact_attendu",
+            "temperature_moy",
+            "taux_impact_attendu",
             "demographie",
-            "part_indus_lourde",
-            "conso_15min_precedente",
-            "conso_30min_precedente",
-            "conso_1h_precedente",
-            "conso_jour_precedent",
-            "conso_semaine_precedente",
+            "presence_evenement",
         ]
 
         # Vérification des colonnes
