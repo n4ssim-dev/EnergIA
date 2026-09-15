@@ -12,10 +12,10 @@ services:
   ms_metier:
     image: sosimplon/energia:${METIER_IMAGE_TAG:-metier-latest}
     ports:
-      - "${METIER_PORT:-8007}:8004"
+      - "${METIER_PORT:-8007}:8006"
     environment:
       HOST: 0.0.0.0
-      PORT: 8007
+      PORT: 8006
 
   gateway:
     image: n4ssim11/energia:${GATEWAY_IMAGE_TAG:-gateway-latest}
