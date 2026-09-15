@@ -415,6 +415,145 @@ def _simulation_complete_region_heure(
     }
 
 
+def construire_besoins_residuels_predits(
+    predictions,
+    timestamps,
+    production_non_pilotable,
+    regions,
+    perturbations
+):
+    """
+    Construit les besoins résiduels prédits
+    pour toutes les régions et tous les créneaux de 15 min.
+    """
+
+    # ---------------------------------
+    # Ranger les prédictions par région
+    # et par heure
+    # ---------------------------------
+
+    predictions_par_region = {}
+
+    for prediction in predictions:
+
+        region_id = prediction["id_region"]
+
+        heure = prediction["date_heure"][11:16]
+
+        consommation = prediction["consommation_predite_mw"]
+
+        if region_id not in predictions_par_region:
+            predictions_par_region[region_id] = {}
+
+        predictions_par_region[region_id][heure] = consommation
+
+    # ---------------------------------
+    # Calcul des besoins résiduels
+    # ---------------------------------
+
+    besoins_residuels_predits = {}
+
+    for region_id in regions:
+
+        besoins_residuels_predits[region_id] = []
+
+        predictions_region = (
+            predictions_par_region.get(
+                region_id,
+                {}
+            )
+        )
+
+        for index, heure in enumerate(timestamps):
+
+            # -------------------------
+            # Cas 00 et 30 : prédiction disponible
+            # -------------------------
+
+            if heure in predictions_region:
+
+                consommation_predite = (
+                    predictions_region[heure]
+                )
+
+            # -------------------------
+            # Cas 15 et 45 : interpolation
+            # -------------------------
+
+            else:
+
+                heure_precedente = (
+                    timestamps[index - 1]
+                )
+
+                consommation_precedente = (
+                    predictions_region[
+                        heure_precedente
+                    ]
+                )
+
+                if index + 1 >= len(timestamps):
+
+                    consommation_predite = (
+                        consommation_precedente
+                    )
+
+                else:
+
+                    heure_suivante = (
+                        timestamps[index + 1]
+                    )
+
+                    consommation_suivante = (
+                        predictions_region[
+                            heure_suivante
+                        ]
+                    )
+
+                    consommation_predite = (
+                        consommation_precedente
+                        + consommation_suivante
+                    ) / 2
+
+            # -------------------------
+            # Application perturbation
+            # -------------------------
+
+            consommation_perturbee = (
+                appliquer_perturbation(
+                    region_id,
+                    heure,
+                    consommation_predite,
+                    perturbations
+                )
+            )
+
+
+            # -------------------------
+            # Production solaire + éolien
+            # -------------------------
+
+            production_non_pilotable_heure = (
+                production_non_pilotable[
+                    region_id
+                ][index]
+            )
+
+            # -------------------------
+            # Besoin résiduel prédit
+            # -------------------------
+
+            besoin_residuel = round(
+                consommation_perturbee - production_non_pilotable_heure,
+                2
+            )
+
+            besoins_residuels_predits[region_id].append(
+                besoin_residuel
+            )
+
+    return besoins_residuels_predits
+
 @router.post("/simulation-complete")
 def simulation_complete(
     date: str = Query(
@@ -422,8 +561,12 @@ def simulation_complete(
         description="Jour ingéré (YYYY-MM-DD) via POST /database/ingest-eco2mix"
     ),
     filtre: Optional[SimulationCompleteFiltre] = None,
+    perturbations: Optional[list[Perturbation]] = None,
 ):
     store = get_store()
+
+    if perturbations is None:
+        perturbations = []
 
     # ---------------------------------
     # Chargement des données
@@ -468,6 +611,20 @@ def simulation_complete(
     # ---------------------------------
 
     predictions = recuperer_predictions(date, regions_disponibles)
+
+    # ---------------------------------
+    # Calcul des besoins résiduels prédits
+    # ---------------------------------
+
+    besoins_residuels_predits = (
+        construire_besoins_residuels_predits(
+            predictions,
+            timestamps,
+            production_non_pilotable,
+            regions_disponibles,
+            perturbations
+        )
+    )
 
     # ---------------------------------
     # Récupération des filtres
@@ -616,7 +773,7 @@ def simulation_complete(
                 index,
                 store,
                 donnees_consommation,
-                besoins_residuels,
+                besoins_residuels_predits,
                 production_nucleaire,
             )
             for index in indices_a_traiter
