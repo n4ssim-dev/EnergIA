@@ -1,12 +1,6 @@
-#!/usr/bin/env bash
-# Bootstrap local EnergIA setup: env files, docker stack, Ollama model.
-# Safe to re-run: never overwrites an existing .env, never re-pulls an
-# already-present Ollama model, and lets `docker compose up` handle its
-# own idempotency for containers that are already running correctly.
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")"
 
-# --- Services that ship a .env.example to seed a local .env from ----------
 ENV_TEMPLATE_DIRS=(. ms_data ms_dijkstra ms_mcp ms_metier ms_predictive)
 OLLAMA_URL="http://localhost:11435"
 OLLAMA_MODEL="qwen2.5:7b"
@@ -61,8 +55,7 @@ step "Démarrage de la stack Docker"
 docker compose up -d --build
 ok "docker compose up terminé"
 
-# Pull du modèle Ollama via l'API HTTP (skip si déjà présent) : plus fiable
-# que `docker exec ... ollama`, dont le binaire ne se trouve pas toujours
+# Pull du modèle Ollama via l'API HTTP (skip si déjà présent) : plus fiable que `docker exec ... ollama`, dont le binaire ne se trouve pas toujours
 # dans $PATH selon l'image utilisée (ex. la variante Intel iGPU en local).
 step "Vérification du modèle Ollama ($OLLAMA_MODEL)"
 ollama_ready=false
