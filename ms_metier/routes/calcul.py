@@ -747,3 +747,78 @@ def calculer_reserve(etat_centrales, store):
     )
 
     return max(reserve_disponible,0)
+
+# ---------------------------------------------------------------------------
+# 28. Répartition du besoin supplémentaire entre les centrales candidates
+# ---------------------------------------------------------------------------
+
+def repartir_besoin_supplementaire(
+    besoin_supplementaire_mw,
+    candidats_tries,
+    etat_centrales
+):
+    """
+    Répartit uniquement les MW supplémentaires nécessaires
+    entre les centrales candidates.
+
+    Cette fonction est utilisée par simulation-complete.
+
+    Elle ne modifie pas l'état réel partagé :
+    etat_centrales doit être une copie.
+    """
+
+    allocations = []
+
+    besoin_restant = max(
+        besoin_supplementaire_mw,
+        0
+    )
+
+    for candidat in candidats_tries:
+
+        if besoin_restant <= 0:
+            break
+
+        plant_id = candidat["plant_id"]
+
+        centrale = candidat["centrale"]
+
+        puissance_actuelle = etat_centrales.get(
+            plant_id,
+            candidat["current_output_mw"]
+        )
+
+        # Marge réellement mobilisable pendant ce quart d'heure
+        marge_disponible = calcul_marge_reelle_disponible(
+            puissance_actuelle,
+            centrale
+        )
+
+        if marge_disponible <= 0:
+            continue
+
+        allocation_mw = min(
+            besoin_restant,
+            marge_disponible
+        )
+
+        allocations.append({
+            "plant_id": plant_id,
+            "allocated_mw": allocation_mw
+        })
+
+        # Mise à jour uniquement dans la copie
+        etat_centrales[plant_id] = (
+            puissance_actuelle
+            + allocation_mw
+        )
+
+        besoin_restant -= allocation_mw
+
+    return {
+        "allocation": allocations,
+        "unsatisfied_mw": max(
+            besoin_restant,
+            0
+        )
+    }
