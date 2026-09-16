@@ -1,7 +1,7 @@
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")"
 
-ENV_TEMPLATE_DIRS=(. ms_data ms_dijkstra ms_mcp ms_metier ms_predictive)
+ENV_TEMPLATE_DIRS=(. gateway ms_data ms_dijkstra ms_mcp ms_metier ms_predictive)
 OLLAMA_URL="http://localhost:11435"
 OLLAMA_MODEL="qwen2.5:7b"
 
@@ -43,12 +43,6 @@ for dir in "${ENV_TEMPLATE_DIRS[@]}"; do
     create "$target créé à partir de .env.example"
   fi
 done
-
-if [ -f gateway/.env ]; then
-  skip "gateway/.env existe déjà"
-else
-  create "gateway/.env manquant (pas de .env.example pour le générer) — créez-le manuellement avant de continuer"
-fi
 
 # démarrage des conteneurs
 step "Démarrage de la stack Docker"
@@ -102,11 +96,11 @@ POSTGRES_PREDICTIVE_PORT="$(val .env POSTGRES_PREDICTIVE_PORT 5435)"
 
 step "Installation terminée — adresses des services"
 printf "  %-28s http://localhost:%s\n" "Gateway (point d'entrée)" "$GATEWAY_PORT"
-printf "  %-28s http://localhost:%s\n" "ms_dijkstra (energia-api)" "$API_PORT"
-printf "  %-28s http://localhost:%s\n" "ms_metier" "$METIER_PORT"
-printf "  %-28s http://localhost:8003\n" "ms_mcp"
-printf "  %-28s http://localhost:%s\n" "ms_data" "$DATA_PORT"
-printf "  %-28s http://localhost:%s\n" "ms_predictive" "$PREDICTIVE_PORT"
+printf "  %-28s http://localhost:%s/docs\n" "ms_dijkstra (energia-api)" "$API_PORT"
+printf "  %-28s http://localhost:%s/docs\n" "ms_metier" "$METIER_PORT"
+printf "  %-28s http://localhost:8003/docs\n" "ms_mcp"
+printf "  %-28s http://localhost:%s/docs\n" "ms_data" "$DATA_PORT"
+printf "  %-28s http://localhost:%s/docs\n" "ms_predictive" "$PREDICTIVE_PORT"
 printf "  %-28s http://localhost:8081\n" "frontend"
 printf "  %-28s http://localhost:11435\n" "Ollama"
 printf "  %-28s localhost:%s\n" "postgres (ms_data)" "$POSTGRES_PORT"
