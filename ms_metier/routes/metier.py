@@ -340,6 +340,44 @@ def _simulation_complete_region_heure(
 
     demande_mw = besoins_residuels[region_id][index]
 
+
+    # ---------------------------------------------------------
+    # Contrôle du besoin actuel / précédent
+    # ---------------------------------------------------------
+
+    besoin_actuel = besoins_residuels[region_id][index]
+
+    if index > 0:
+        besoin_precedent = besoins_residuels[region_id][index - 1]
+        variation_besoin = besoin_actuel - besoin_precedent
+    else:
+        besoin_precedent = None
+        variation_besoin = None
+
+    # ---------------------------------------------------------
+    # Sens de variation du besoin nucléaire
+    # ---------------------------------------------------------
+
+    if variation_besoin is not None:
+
+        if variation_besoin > 0:
+            print(
+                "Le besoin augmente de",
+                variation_besoin,
+                "MW"
+            )
+
+        elif variation_besoin < 0:
+            print(
+                "Le besoin diminue de",
+                abs(variation_besoin),
+                "MW"
+            )
+
+        else:
+            print(
+                "Le besoin nucléaire est stable"
+            )
     # ---------------------------------------------------------
     # 2. Récupération des informations de la région
     # ---------------------------------------------------------
@@ -383,6 +421,85 @@ def _simulation_complete_region_heure(
 
         puissance_precedente = etat_centrales[plant_id]
 
+        ecart_besoin_production = (
+            besoin_actuel
+            - puissance_precedente
+        )
+
+        print(
+            "Besoin actuel :",
+            besoin_actuel,
+            "MW"
+        )
+
+        print(
+            "Production actuelle Golfech :",
+            puissance_precedente,
+            "MW"
+        )
+
+        print(
+            "Écart besoin / production :",
+            ecart_besoin_production,
+            "MW"
+        )
+
+        # if (
+        #     variation_besoin is not None
+        #     and variation_besoin < 0
+        # ):
+
+        #     baisse_demandee = abs(
+        #         variation_besoin
+        #     )
+
+        #     puissance_souhaitee = (
+        #         puissance_precedente
+        #         - baisse_demandee
+        #     )
+
+        #     nouvelle_puissance_reelle = puissance_reelle(
+        #         puissance_precedente,
+        #         puissance_souhaitee,
+        #         centrale_temporelle
+        #     )
+
+        #     etat_centrales[plant_id] = (
+        #         nouvelle_puissance_reelle
+        #     )
+
+            # print(
+            #     "Baisse demandée :",
+            #     baisse_demandee,
+            #     "MW"
+            # )
+
+            # print(
+            #     "Golfech avant baisse :",
+            #     puissance_precedente,
+            #     "MW"
+            # )
+
+            # print(
+            #     "Golfech après contraintes :",
+            #     nouvelle_puissance_reelle,
+            #     "MW"
+            # )
+
+        rampUp = centrale_temporelle.max_ramp_up_mw_per_15_min
+
+        if (
+            region_id == "occitanie"
+            and donnees_consommation["timestamps"][index] == "15:00"
+            and plant_id == "golfech"
+        ):
+            print("----- CONTROLE 15:00 OCCITANIE -----")
+            print("Besoin précédent :", besoin_precedent)
+            print("Besoin actuel :", besoin_actuel)
+            print("Variation du besoin :", variation_besoin)
+            print("Puissance actuelle Golfech :", puissance_precedente)
+            print("------------------------------------")
+
         ramp_up = (centrale_temporelle.max_ramp_up_mw_per_15_min)
 
         # Création du candidat local
@@ -404,8 +521,24 @@ def _simulation_complete_region_heure(
     # 4. Première répartition : on essaie uniquement avec les centrales locales
     # ---------------------------------------------------------
 
+    if variation_besoin is None:
+        # Premier créneau de la journée :
+        # on ne possède pas encore de besoin précédent.
+        demande_a_repartir = demande_mw
+
+    elif variation_besoin > 0:
+        # Le besoin augmente :
+        # on répartit uniquement l'augmentation.
+        demande_a_repartir = variation_besoin
+
+    else:
+        # Le besoin baisse ou reste stable :
+        # aucune puissance supplémentaire à répartir.
+        demande_a_repartir = 0
+
+
     resultat_repartition = repartir_demande(
-        demande_mw,
+        demande_a_repartir,
         candidats,
         etat_centrales.copy()
     )
@@ -418,7 +551,11 @@ def _simulation_complete_region_heure(
     #    recherche des centrales extérieures avec Dijkstra
     # ---------------------------------------------------------
 
-    if besoin_restant > 0:
+    if (
+        besoin_restant > 0
+        and variation_besoin is not None
+        and variation_besoin > 0
+    ):
 
         print(
             "Besoin non couvert localement, "
@@ -635,15 +772,32 @@ def _simulation_complete_region_heure(
     # 9. Calcul du besoin qui reste réellement non couvert
     # ---------------------------------------------------------
 
+    production_nucleaire_actuelle = sum(
+        etat_centrales.get(plant_id, 0)
+        for plant_id in region["local_plant_ids"]
+    )
+
     besoin_non_couvert = round(
         max(
-            demande_mw
-            - total_nucleaire_reellement_fourni,
+            demande_mw - production_nucleaire_actuelle,
             0
         ),
         2
     )
+    print(
+        "Besoin nucléaire actuel :",
+        demande_mw
+    )
 
+    print(
+        "Production nucléaire locale actuelle :",
+        production_nucleaire_actuelle
+    )
+
+    print(
+        "Besoin non couvert réel :",
+        besoin_non_couvert
+    )
     # ---------------------------------------------------------
     # 10. Réponse du quart d'heure
     # ---------------------------------------------------------
