@@ -66,17 +66,11 @@
         @for (region of regions(); track region.id) {
 
           <option [value]="region.id">
-
-          
              {{ region.name }} 
-
           </option>
-
         }
           </select>
-
         </div>
-
       </div>
 
 
@@ -109,30 +103,22 @@
         <label for="time">
           Heure
         </label>
-
         <div class="input-wrapper">
-
           <span class="material-icons">
             schedule
           </span>
-
           <select
             id="time" [(ngModel)]="inputHeure">
             <option value="">
               Sélectionner une heure
             </option>
            @for (heure of quartsHeures(); track heure.id) {
-
           <option [value]="heure.id">
-
           
              {{ heure.name }} 
-
           </option>
 
         }
-           
-
           </select>
 
         </div>
@@ -146,26 +132,29 @@
     <button
       class="predict-button"
       (click)="predire()"
-      [disabled]="!inputIdRegion || !inputDate || !inputHeure"
+      [disabled]="!inputIdRegion || !inputDate || !inputHeure || isLoading"
       >
-
-      <span class="material-icons">
-        auto_awesome
-      </span>
-
-      Prédire la consommation
+        @if (isLoading) {
+      <span class="loader"></span>
+      Prédiction en cours...
+      } @else {
+    <span class="material-icons">
+      auto_awesome
+    </span>
+   
+    Prédire la consommation
 
       <span class="material-icons arrow">
         arrow_forward
       </span>
-
+}
     </button>
 
   </section>
 
 
   <!-- RESULTAT -->
-  @if (prediction !== null) {
+  @if (prediction()) {
 
     <section class="result-section">
 
@@ -174,15 +163,12 @@
         <span class="section-label">
           RÉSULTAT DE LA PRÉDICTION
         </span>
-
         <h2>
           Consommation prévue
         </h2>
-
         <p>
-          {{ prediction }} · {{ inputDate }} · {{ inputHeure }}
+          {{ prediction().prediction }} · {{ prediction().date }} · {{ prediction().heure }}
         </p>
-
       </div>
 
 
@@ -195,7 +181,7 @@
         </div>
 
         <div class="result-value">
-          {{ prediction | number:'1.0-0' }}
+          {{ prediction().prediction }}
           <span>MW</span>
         </div>
 
@@ -211,25 +197,21 @@
 
           <div>
             <span>Région</span>
-            <strong>{{ inputIdRegion }}</strong>
+            <strong>{{ prediction().region_id  }}</strong>
           </div>
 
           <div>
             <span>Horaire</span>
-            <strong>{{  inputHeure }}</strong>
+            <strong>{{  prediction().heure  }}</strong>
           </div>
-
           <div>
-            <span>Confiance</span>
-            <strong class="confidence">
-              {{ confidence }} %
+            <span> Date </span>
+            <strong class="">
+              {{ prediction().date | date:'dd-MM-yyyy' }}
             </strong>
           </div>
-
         </div>
-
       </div>
-
     </section>
   }
 

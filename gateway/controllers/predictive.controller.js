@@ -1,7 +1,7 @@
 const predictionService = require("../models/predictiveService");
 
 
-async function getPredictions(req, res) {
+async function getPredictions(req,res) {
   try {
     const { region, date,heure } = req.query;
 
@@ -14,8 +14,8 @@ async function getPredictions(req, res) {
       });
     }
 
-    const reponse = await predictionService.getPredictions(region, date,heure);
-
+    const reponse = await predictionService.getPredictions(region,date,heure);
+     
     return res.status(200).json({
       success: true,
       message: "La demande a été envoyée à ms predictive",
@@ -32,9 +32,6 @@ async function getPredictions(req, res) {
     });
   }
 }
-
-
-
 
 module.exports = {
   getPredictions
