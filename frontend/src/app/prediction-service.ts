@@ -6,10 +6,18 @@ export class PredictionService {
 
     private url = "http://localhost:3000/api";
 
-    constructor(private http: HttpClient){};
+    constructor(private http: HttpClient) {  
+    };
 
     getRegions(){
           return this.http.get<any>(`${this.url}/regions`); 
+    }
 
+    getPrediction(region:string,date:string,heure:string){
+          return this.http.get<any>(`${this.url}/predictions/consommation`,
+            {
+                params: { region, date, heure }
+            }
+          ); 
     }
 }
