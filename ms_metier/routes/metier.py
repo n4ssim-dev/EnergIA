@@ -319,21 +319,30 @@ def get_besoins_residuels(
 
 
 def _simulation_complete_region_heure(
-    region_id, index, store, donnees_consommation, besoins_residuels,
-    production_nucleaire, etat_centrales
+    region_id,
+    index,
+    store,
+    donnees_consommation,
+    besoins_residuels,
+    production_nucleaire,
+    etat_centrales
 ):
-    """Calcule la répartition nucléaire réelle pour une région et un quart
-    d'heure donnés.
+    """
+    Simule la production nucléaire nécessaire pour une région et un quart d'heure donné.
 
-    etat_centrales est désormais reçu en paramètre et modifié en place
-    (jamais réinitialisé ici) : c'est ce qui permet à l'appelant de simuler
-    la journée dans l'ordre, pas à pas, pour que chaque centrale parte bien
-    de son état réel au pas précédent (et non de
-    initial_output_mw_at_23_45_previous_day à chaque appel, ce qui donnait
-    des résultats faux pour toute heure différente de 00:00).
+    etat_centrales est partagé entre les différents quarts d'heure.
+    Cela permet à chaque centrale de repartir de sa puissance réelle au pas précédent.
     """
 
+    # ---------------------------------------------------------
+    # 1. Récupération du besoin résiduel à couvrir
+    # ---------------------------------------------------------
+
     demande_mw = besoins_residuels[region_id][index]
+
+    # ---------------------------------------------------------
+    # 2. Récupération des informations de la région
+    # ---------------------------------------------------------
 
     region = next(
         r
@@ -341,104 +350,324 @@ def _simulation_complete_region_heure(
         if r["id"] == region_id
     )
 
+    # ---------------------------------------------------------
+    # 3. Priorité aux centrales locales
+    # ---------------------------------------------------------
+
     candidats_ids = region["local_plant_ids"]
 
     candidats = []
 
     for plant_id in candidats_ids:
 
+        # Informations réseau de la centrale
         centrale_reseau = next(
             plant
             for plant in production_nucleaire["plants"]
             if plant["id"] == plant_id
         )
 
+        # Informations temporelles / techniques de la centrale
         centrale_temporelle = store.centrales.get(plant_id)
 
-        # Initialisation UNE SEULE FOIS par centrale, au tout premier pas où
-        # on la rencontre (normalement index 0) : ensuite on reprend
-        # toujours la valeur laissée par le pas précédent dans etat_centrales.
+        # -----------------------------------------------------
+        # Initialisation de la centrale une seule fois
+        # -----------------------------------------------------
+        # Si la centrale n'a encore jamais été utilisée pendant la simulation de la journée,
+        # on part de sa puissance à 23h45 la veille.
+        # Ensuite, etat_centrales conservera sa puissance réelle.
+        # -----------------------------------------------------
+
         if plant_id not in etat_centrales:
-            etat_centrales[plant_id] = centrale_temporelle.initial_output_mw_at_23_45_previous_day
+            etat_centrales[plant_id] = (centrale_temporelle.initial_output_mw_at_23_45_previous_day)
 
         puissance_precedente = etat_centrales[plant_id]
-        rampUp = centrale_temporelle.max_ramp_up_mw_per_15_min
 
+        ramp_up = (centrale_temporelle.max_ramp_up_mw_per_15_min)
+
+        # Création du candidat local
         candidats.append({
             "plant_id": plant_id,
             "current_output_mw": puissance_precedente,
-            "soft_upper_bound_mw": centrale_reseau["simulation"]["soft_upper_bound_mw"],
-            "max_ramp_up_mw_per_15_min": rampUp,
+            "soft_upper_bound_mw":
+                centrale_reseau[
+                    "simulation"
+                ][
+                    "soft_upper_bound_mw"
+                ],
+            "max_ramp_up_mw_per_15_min":
+                ramp_up,
             "centrale": centrale_temporelle,
         })
 
-    resultat_repartition = repartir_demande(demande_mw, candidats, etat_centrales.copy())
-    besoin_restant = resultat_repartition["unsatisfied_mw"]
+    # ---------------------------------------------------------
+    # 4. Première répartition : on essaie uniquement avec les centrales locales
+    # ---------------------------------------------------------
+
+    resultat_repartition = repartir_demande(
+        demande_mw,
+        candidats,
+        etat_centrales.copy()
+    )
+
+    # Quantité que les centrales locales n'ont pas pu couvrir
+    besoin_restant = (resultat_repartition["unsatisfied_mw"])
+
+    # ---------------------------------------------------------
+    # 5. Si les centrales locales sont insuffisantes,
+    #    recherche des centrales extérieures avec Dijkstra
+    # ---------------------------------------------------------
 
     if besoin_restant > 0:
+
+        print(
+            "Besoin non couvert localement, "
+            "recherche de centrales extérieures"
+        )
+
+        # La centrale locale sert de point de départ
+        # pour la recherche de chemin dans le réseau.
         source_id = region["local_plant_ids"][0]
 
-        centrales_distantes = rechercher_centrales_distantes(
-            source_id,
-            region["external_entry_plant_ids"],
-            store
+        # Dijkstra recherche un chemin entre la centrale locale
+        # et chacune des centrales extérieures autorisées.
+        centrales_distantes = (
+            rechercher_centrales_distantes(
+                source_id,
+                region["external_entry_plant_ids"],
+                store
+            )
+        )
+
+        # -----------------------------------------------------
+        # 6. Transformation du résultat Dijkstra
+        #    en candidats utilisables par le moteur métier
+        # -----------------------------------------------------
+
+        candidats_externes = []
+
+        for distante in centrales_distantes:
+
+            plant_id = distante["plant_id"]
+
+            centrale_temporelle = (
+                store.centrales.get(plant_id)
+            )
+
+            # Sécurité si la centrale n'existe pas
+            if centrale_temporelle is None:
+                continue
+
+            # Initialisation de l'état de la centrale extérieure
+            # uniquement si elle n'a encore jamais été rencontrée.
+            if plant_id not in etat_centrales:
+                etat_centrales[plant_id] = (
+                    centrale_temporelle.initial_output_mw_at_23_45_previous_day
+                )
+
+            puissance_precedente = (
+                etat_centrales[plant_id]
+            )
+
+            # -------------------------------------------------
+            # Calcul du score de la centrale extérieure
+            # -------------------------------------------------
+            # Le score utilise notamment :
+            # - la distance calculée par Dijkstra ;
+            # - les pertes réseau ;
+            # - la saturation de la centrale ;
+            # - sa pénalité technique.
+            # -------------------------------------------------
+
+            score = calcul_score(
+                geodesic_distance_km=(
+                    distante["distance_km"]
+                ),
+                loss_percent=(
+                    distante["loss_percent"]
+                ),
+                soft_upper_bound_mw=(
+                    centrale_temporelle
+                    .soft_upper_bound_mw
+                ),
+                technical_penalty=(
+                    centrale_temporelle
+                    .technical_penalty
+                ),
+                plant_id=plant_id,
+                local_plant_ids=(
+                    region["local_plant_ids"]
+                ),
+                current_output_mw=(
+                    puissance_precedente
+                ),
+            )
+
+            # Une seule insertion par centrale
+            candidats_externes.append({
+                "plant_id": plant_id,
+                "score": score,
+                "current_output_mw":
+                    puissance_precedente,
+                "soft_upper_bound_mw":
+                    centrale_temporelle
+                    .soft_upper_bound_mw,
+                "max_ramp_up_mw_per_15_min":
+                    centrale_temporelle
+                    .max_ramp_up_mw_per_15_min,
+                "centrale":
+                    centrale_temporelle,
+            })
+
+        # -----------------------------------------------------
+        # 7. Classement des centrales extérieures
+        # -----------------------------------------------------
+        # On classe APRES avoir construit toute la liste.
+        # Score le plus faible = centrale prioritaire.
+        # -----------------------------------------------------
+
+        candidats_externes = (
+            classer_candidats(candidats_externes)
         )
 
         print(
-            "Centrales extérieures trouvées :",
-            centrales_distantes
+            "Candidats extérieurs classés :",
+            [
+                candidat["plant_id"]
+                for candidat
+                in candidats_externes
+            ]
         )
+
+        resultat_repartition_externe = repartir_demande(
+            besoin_restant,
+            candidats_externes,
+            etat_centrales.copy()
+        )
+        resultat_repartition["allocation"].extend(
+            resultat_repartition_externe["allocation"]
+        )
+
+        resultat_repartition["unsatisfied_mw"] = (
+            resultat_repartition_externe["unsatisfied_mw"]
+        )
+
+        print(
+            "Répartition extérieure :",
+            resultat_repartition_externe
+        )
+    # ---------------------------------------------------------
+    # 8. Application des contraintes sur les allocations locales
+    # ---------------------------------------------------------
+
     allocations_reelles = []
+
     total_nucleaire_reellement_fourni = 0
 
     for allocation in resultat_repartition["allocation"]:
 
-        plant_id = allocation["plant_id"]
-        allocation_souhaitee = allocation["allocated_mw"]
+        plant_id = allocation[
+            "plant_id"
+        ]
 
-        centrale_temporelle = store.centrales.get(plant_id)
-        puissance_precedente = etat_centrales[plant_id]
+        allocation_souhaitee = allocation[
+            "allocated_mw"
+        ]
 
-        puissance_souhaitee = (puissance_precedente + allocation_souhaitee)
-
-        nouvelle_puissance_reelle = puissance_reelle(
-            puissance_precedente,
-            puissance_souhaitee,
-            centrale_temporelle
+        centrale_temporelle = (
+            store.centrales.get(
+                plant_id
+            )
         )
 
+        puissance_precedente = (
+            etat_centrales[
+                plant_id
+            ]
+        )
+
+        puissance_souhaitee = (
+            puissance_precedente
+            + allocation_souhaitee
+        )
+
+        # Application des contraintes techniques
+        # de la centrale.
+        nouvelle_puissance_reelle = (
+            puissance_reelle(
+                puissance_precedente,
+                puissance_souhaitee,
+                centrale_temporelle
+            )
+        )
+
+        # Quantité réellement ajoutée par la centrale.
         production_reelle_fournie = max(
-            nouvelle_puissance_reelle - puissance_precedente,
+            nouvelle_puissance_reelle
+            - puissance_precedente,
             0
         )
 
-        # Mise à jour de l'état PARTAGÉ : le pas suivant repartira d'ici.
-        etat_centrales[plant_id] = nouvelle_puissance_reelle
-        total_nucleaire_reellement_fourni += production_reelle_fournie
+        # Mise à jour de l'état partagé.
+        etat_centrales[
+            plant_id
+        ] = nouvelle_puissance_reelle
+
+        total_nucleaire_reellement_fourni += (
+            production_reelle_fournie
+        )
 
         allocations_reelles.append({
             "plant_id": plant_id,
-            "puissance_precedente_mw": puissance_precedente,
-            "allocation_souhaitee_mw": allocation_souhaitee,
-            "puissance_souhaitee_mw": puissance_souhaitee,
-            "puissance_reelle_mw": nouvelle_puissance_reelle,
-            "production_reelle_fournie_mw": production_reelle_fournie,
+            "puissance_precedente_mw":
+                puissance_precedente,
+            "allocation_souhaitee_mw":
+                allocation_souhaitee,
+            "puissance_souhaitee_mw":
+                puissance_souhaitee,
+            "puissance_reelle_mw":
+                nouvelle_puissance_reelle,
+            "production_reelle_fournie_mw":
+                production_reelle_fournie,
         })
 
-    besoin_non_couvert = round(max(demande_mw - total_nucleaire_reellement_fourni, 0),2)
+    # ---------------------------------------------------------
+    # 9. Calcul du besoin qui reste réellement non couvert
+    # ---------------------------------------------------------
+
+    besoin_non_couvert = round(
+        max(
+            demande_mw
+            - total_nucleaire_reellement_fourni,
+            0
+        ),
+        2
+    )
+
+    # ---------------------------------------------------------
+    # 10. Réponse du quart d'heure
+    # ---------------------------------------------------------
 
     return {
         "region": region_id,
         "index": index,
-        "heure": donnees_consommation["timestamps"][index],
-        "besoin_residuel_mw": demande_mw,
-        "repartition_souhaitee": resultat_repartition,
-        "allocations_apres_contraintes": allocations_reelles,
-        "production_nucleaire_reellement_fournie_mw": total_nucleaire_reellement_fourni,
-        "besoin_non_couvert_mw": besoin_non_couvert,
-        "etat_centrales_apres_calcul": dict(etat_centrales),
+        "heure":
+            donnees_consommation[
+                "timestamps"
+            ][index],
+        "besoin_residuel_mw":
+            demande_mw,
+        "repartition_souhaitee":
+            resultat_repartition,
+        "allocations_apres_contraintes":
+            allocations_reelles,
+        "production_nucleaire_reellement_fournie_mw":
+            total_nucleaire_reellement_fourni,
+        "besoin_non_couvert_mw":
+            besoin_non_couvert,
+        "etat_centrales_apres_calcul":
+            dict(etat_centrales),
     }
-
 
 def construire_besoins_residuels_predits(
     predictions,
