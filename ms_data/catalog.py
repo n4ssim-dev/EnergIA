@@ -1,6 +1,7 @@
-# Catalogue statique des routes exposées par l'API ms_dijkstra (méthode,
-# fichier source, description, paramètres). Entretenu à la main : à mettre à
-# jour en cas d'ajout/suppression/modification de route dans ms_dijkstra/routes/*.py.
+# Catalogue statique des routes exposées par les microservices EnergIA (méthode,
+# fichier source, description, paramètres). Entretenu à la main : à mettre à jour
+# en cas d'ajout/suppression/déplacement de route dans ms_dijkstra/, ms_metier/
+# ou ms_data/ (routes/*.py de chaque service).
 ROUTES_CATALOG = [
     {
         "chemin": "/centrales", "methode": "GET", "fichier_source": "api.py",
@@ -103,7 +104,7 @@ ROUTES_CATALOG = [
         "description": "Anomalies détectées dans le graphe/datastore", "auth": True, "parametres": [],
     },
     {
-        "chemin": "/dijkstra/calcule", "methode": "GET", "fichier_source": "dijkstra.py",
+        "chemin": "/metier/calcule", "methode": "GET", "fichier_source": "metier.py",
         "description": "Répartition d'une demande sur une région",
         "auth": True,
         "parametres": [
@@ -112,7 +113,7 @@ ROUTES_CATALOG = [
         ],
     },
     {
-        "chemin": "/dijkstra/simulation-regions", "methode": "POST", "fichier_source": "dijkstra.py",
+        "chemin": "/metier/simulation-regions", "methode": "POST", "fichier_source": "metier.py",
         "description": "Simulation multi-régions sur 96 pas de 15 min, avec perturbations optionnelles",
         "auth": True,
         "parametres": [
@@ -124,7 +125,7 @@ ROUTES_CATALOG = [
         ],
     },
     {
-        "chemin": "/dijkstra/besoins-residuels", "methode": "GET", "fichier_source": "dijkstra.py",
+        "chemin": "/metier/besoins-residuels", "methode": "GET", "fichier_source": "metier.py",
         "description": "Besoin résiduel (conso - solaire - éolien) par région et par quart d'heure",
         "auth": True,
         "parametres": [
@@ -132,7 +133,7 @@ ROUTES_CATALOG = [
         ],
     },
     {
-        "chemin": "/dijkstra/simulation-complete", "methode": "POST", "fichier_source": "dijkstra.py",
+        "chemin": "/metier/simulation-complete", "methode": "POST", "fichier_source": "metier.py",
         "description": "Simulation complète avec contraintes réelles sur l'ensemble des faits de consommation "
         "(toutes régions, tous quarts d'heure), avec filtre facultatif par région et/ou heure",
         "auth": True, "parametres": [
@@ -186,6 +187,32 @@ ROUTES_CATALOG = [
             {"nom": "region_id", "emplacement": "path", "type": "str", "requis": True},
             {"nom": "heure", "emplacement": "query", "type": "str", "requis": True},
             {"nom": "date", "emplacement": "query", "type": "str", "requis": True},
+        ],
+    },
+    {
+        "chemin": "/predictions/consommation/{region_id}/{date}/{heure}", "methode": "GET",
+        "fichier_source": "ms_predictive/routes/predictions.py",
+        "description": "Prédiction ML de la consommation d'une région à une date et un quart d'heure donnés",
+        "auth": True,
+        "parametres": [
+            {"nom": "region_id", "emplacement": "path", "type": "str", "requis": True},
+            {"nom": "date", "emplacement": "path", "type": "str", "requis": True},
+            {"nom": "heure", "emplacement": "path", "type": "str", "requis": True},
+            # Authentification par x-api-key (et non x-password comme les autres services).
+            {"nom": "x-api-key", "emplacement": "header", "type": "str", "requis": True},
+        ],
+    },
+    {
+        "chemin": "/predictions/periode", "methode": "POST",
+        "fichier_source": "ms_predictive/routes/predictions.py",
+        "description": "Prédiction ML de la consommation sur une période, pour une liste de régions",
+        # Contrairement à /predictions/consommation/..., cette route ne vérifie aucune
+        # authentification (ni x-api-key, ni x-password) dans le code actuel.
+        "auth": False,
+        "parametres": [
+            {"nom": "date_debut", "emplacement": "body", "type": "datetime", "requis": True},
+            {"nom": "date_fin", "emplacement": "body", "type": "datetime", "requis": True},
+            {"nom": "regions", "emplacement": "body", "type": "list[str]", "requis": True},
         ],
     },
 ]
