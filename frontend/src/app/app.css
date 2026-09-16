@@ -1,0 +1,16 @@
+.layout {
+
+display:flex;
+
+height:100vh;
+
+background:lch(98.65% 2.07 280.72);
+
+}
+
+
+main {
+
+flex:1;
+
+}

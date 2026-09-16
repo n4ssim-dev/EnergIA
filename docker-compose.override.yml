@@ -4,13 +4,27 @@ services:
     container_name: energia-api
     build:
       context: .
-      dockerfile: ./api/Dockerfile
+      dockerfile: ./ms_dijkstra/Dockerfile
     ports:
-      - "8000:8000"
+      - "${API_PORT:-8080}:8080"
     env_file:
-      - ./api/.env
+      - ./ms_dijkstra/.env
     volumes:
-      - ./api:/app
+      - ./ms_dijkstra:/app
+
+  ms_metier:
+    container_name: metier-service
+    build:
+      context: .
+      dockerfile: ./ms_metier/Dockerfile
+    ports:
+      - "${METIER_PORT:-8007}:8006"
+    env_file:
+      - ./ms_metier/.env
+    depends_on :
+      - python-service
+    volumes:
+      - ./ms_metier:/app
 
   gateway:
     container_name: energia-gateway
@@ -18,7 +32,7 @@ services:
       context: .
       dockerfile: ./gateway/Dockerfile
     ports:
-      - "3000:3000"
+      - "${GATEWAY_PORT:-3000}:3000"
     env_file:
       - ./gateway/.env
     depends_on:
@@ -26,3 +40,28 @@ services:
     volumes:
       - ./gateway:/app
       - /app/node_modules
+  
+  ms_mcp:
+    container_name: energia-mcp-fastapi
+    build:
+      context: .
+      dockerfile: ms_mcp/Dockerfile
+    ports:
+      - "8003:8003"
+    env_file:
+      - ./ms_mcp/.env
+    volumes:
+      - ./ms_mcp:/app
+  
+  ms-data:
+    container_name: energia-ms-data
+    build:
+      context: ./ms_data
+    profiles: ["ms-data"]
+    env_file:
+      - ./ms_data/.env
+    ports:
+      - "${PORT:-8004}:8004"
+    volumes:
+      - ./ms_data/data:/app/data
+
