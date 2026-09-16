@@ -3,6 +3,11 @@
 ![Docker](https://img.shields.io/badge/Docker-2496ED?style=for-the-badge&logo=docker&logoColor=white)
 ![Node.js](https://img.shields.io/badge/Node.js-339933?style=for-the-badge&logo=node.js&logoColor=white)
 ![Express](https://img.shields.io/badge/Express.js-000000?style=for-the-badge&logo=express&logoColor=white)
+![Python](https://img.shields.io/badge/Python-3776AB?style=for-the-badge&logo=python&logoColor=white)
+![FastAPI](https://img.shields.io/badge/FastAPI-009688?style=for-the-badge&logo=fastapi&logoColor=white)
+![Angular](https://img.shields.io/badge/Angular-DD0031?style=for-the-badge&logo=angular&logoColor=white)
+![PostgreSQL](https://img.shields.io/badge/PostgreSQL-4169E1?style=for-the-badge&logo=postgresql&logoColor=white)
+![Ollama](https://img.shields.io/badge/Ollama-000000?style=for-the-badge&logo=ollama&logoColor=white)
 ![Git](https://img.shields.io/badge/Git-F05032?style=for-the-badge&logo=git&logoColor=white)
 
 
@@ -33,22 +38,34 @@ Le réseau utilisé dans ce projet est une représentation du réseau électriqu
 
 Utilisateur
 ↓
-Gateway Express
+Frontend Angular
 ↓
-FastAPI
+Gateway Express (point d'entrée unique de l'API, préfixe `/api`)
 ↓
-Moteur Prescriptif
+Microservices FastAPI (graphe/Dijkstra, moteur prescriptif, données, prédictif, langage naturel)
 ↓
 JSON
 
-Le projet a été réalisé avec **Docker** (voir le fichier `compose.yaml`).
+Le projet a été réalisé avec **Docker** (voir le fichier [`docker-compose.yml`](docker-compose.yml), complété par [`docker-compose.override.yml`](docker-compose.override.yml) pour le développement local).
 
-L'application est composée de deux conteneurs :
+L'application est composée de plusieurs services conteneurisés :
 
-- **energia-gateway** : le backend basé sur une API Express, exposant les ressources nécessaires au     fonctionnement de l'application ;
-- **energia-fastapi** : microservice développé avec FastAPI, à partir du dossier [`fastapi/`](fastapi/). Il expose les données relatives aux centrales, aux régions et aux liaisons, et permet de lancer une simulation avec le moteur prescriptif (voir [`fastapi/README.md`](fastapi/README.md)) ;
+| Service (docker-compose) | Conteneur | Rôle | Port hôte |
+| --- | --- | --- | --- |
+| `gateway` | `energia-gateway` | API Express, point d'entrée unique consommé par le frontend | `3000` |
+| `python-service` | `energia-api` | FastAPI [`ms_dijkstra/`](ms_dijkstra/) : graphe, Dijkstra, endpoints d'analyse (`/analytics/...`) | `8080` |
+| `ms_metier` | `metier-service` | FastAPI [`ms_metier/`](ms_metier/) : moteur prescriptif (score/répartition des centrales) et simulation temporelle (96 pas de 15 min) | `8007` |
+| `ms_mcp` | `energia-mcp-fastapi` | FastAPI [`ms_mcp/`](ms_mcp/) : interprétation des requêtes en langage naturel via Ollama, catalogue dynamique des routes | `8003` |
+| `ms-data` | `energia-ms-data` | FastAPI [`ms_data/`](ms_data/) : ingestion et catalogue des données (centrales, régions, liaisons, eco2mix) dans Postgres | `8004` |
+| `ms-predictive` | `energia-ms-predictive` | FastAPI [`ms_predictive/`](ms_predictive/) : entraînement et service de prédiction (consommation régionale) | `8005` |
+| `frontend` | `frontend` | Application Angular | `8081` |
+| `langage` | `energia_ollama` | Serveur Ollama, modèle `qwen2.5:7b` utilisé par `ms_mcp` | `11435` |
+| `postgres` | `energia-ms-data-postgres` | Base Postgres de `ms-data` | `5434` |
+| `postgres-predictive` | `energia-ms-predictive-postgres` | Base Postgres de `ms-predictive` | `5435` |
 
-`fastapi/` reprend la structure et le moteur de [`dijkstra/`](dijkstra/) et y agrège les routes historiquement portées par [`python-service/`](python-service/). Ces deux derniers dossiers restent présents dans le dépôt à titre de référence mais ne sont plus branchés à `docker-compose` ni à `gateway/`.
+`ms_dijkstra/` et `ms_metier/` sont les héritiers du service Python unique historique (`python-service/` puis `fastapi/`, depuis retirés du dépôt) : `ms_dijkstra/` porte le graphe/Dijkstra et les routes d'analyse, `ms_metier/` porte le moteur prescriptif et la simulation temporelle.
+
+En utilisation normale, seule la Gateway est appelée directement par le frontend ou un client externe ; les microservices FastAPI communiquent entre eux et avec Ollama via le réseau Docker interne (nom de service, pas `localhost`).
 
 ---
 # Prérequis
@@ -75,13 +92,18 @@ cd <EnergIA>
 ```
 ## 2. Configuration des variables d'environnement
 
-Créer un fichier `.env` dans chacune des dossiers "fastapi" et "gateway" 
-en vous basant sur le fichier `.env.example`.
+Chaque service possède son propre `.env.example` : la racine du projet et chacun des microservices [`ms_data/`](ms_data/), [`ms_dijkstra/`](ms_dijkstra/), [`ms_mcp/`](ms_mcp/), [`ms_metier/`](ms_metier/), [`ms_predictive/`](ms_predictive/). Créer un `.env` dans chacun de ces dossiers en vous basant sur son `.env.example` :
 
-Exemple :
+```bash
+cp .env.example .env
+cp ms_data/.env.example ms_data/.env
+cp ms_dijkstra/.env.example ms_dijkstra/.env
+cp ms_mcp/.env.example ms_mcp/.env
+cp ms_metier/.env.example ms_metier/.env
+cp ms_predictive/.env.example ms_predictive/.env
+```
 
-cp gateway/.env.example gateway/.env
-cp fastapi/.env.example fastapi/.env
+Le script [`./setup.sh`](setup.sh) fait ces copies automatiquement (sans jamais écraser un `.env` déjà présent), démarre les conteneurs et télécharge le modèle Ollama : voir l'étape 3.
 
 Les valeurs des variables doivent être adaptées à l’environnement utilisé.
 
@@ -89,85 +111,101 @@ Les fichiers .env ne doivent pas être ajoutés au dépôt Git.
 
 ## 3. Lancement des conteneurs Docker
 
-Exécuter la commande suivante :
+Le plus simple est d'exécuter le script de démarrage, qui configure les `.env` manquants, lance `docker compose up --build` et télécharge le modèle Ollama si besoin :
+
+```bash
+./setup.sh
+```
+
+Ou manuellement :
 
 ```bash
 docker compose up --build
 ```
 
-Une fois le démarrage terminé :
+Une fois le démarrage terminé, les services sont disponibles aux adresses suivantes :
 
-- le micro service python sera disponible à l'adresse :
+| Service | Adresse |
+| --- | --- |
+| Gateway (point d'entrée) | http://localhost:3000 |
+| ms_dijkstra (`energia-api`) | http://localhost:8080 |
+| ms_metier | http://localhost:8007 |
+| ms_mcp | http://localhost:8003 |
+| ms_data | http://localhost:8004 |
+| ms_predictive | http://localhost:8005 |
+| frontend | http://localhost:8081 |
+| Ollama | http://localhost:11435 |
 
-```
-http://127.0.0.1:8000/
-
-```
-
-- le gateway sera accessible à l'adresse :
-
-```
-http://127.0.0.1:3000/
-
-```
-En utilisation normale, les requêtes doivent être envoyées uniquement à la gateway.
+En utilisation normale, les requêtes doivent être envoyées uniquement à la gateway (préfixe `/api`).
 
 Pour arrêter les conteneurs :
 ```
 docker compose down
 ```
 ## 4. Eléments de configuration
-| Service | Variable             | Rôle                                   | Contenu                      |
-| ------- | -------------------- | -------------------------------------- | ---------------------------- |
+| Service | Variable             | Rôle                                   | Défaut (`.env.example`)      |
+| ------- | -------------------- | -------------------------------------- | ----------------------------- |
+| Racine  | `GATEWAY_PORT`, `API_PORT`, `METIER_PORT` | Ports hôte exposés par `docker-compose.override.yml` | `3000`, `8080`, `8007` |
+| Racine  | `COMPOSE_PROFILES`   | Profils Compose activés (quels services démarrent) | voir `.env.example` |
 | Gateway | `PORT`               | Port d’écoute de la gateway            | `3000`                       |
-| Gateway | `PYTHON_SERVICE_URL` | Adresse interne du microservice Python | `http://python-service:8000` |
-| Gateway | `API_PASSWORD`       | Mot de passe envoyé au service Python  | `5`                          |
-| Python  | `PORT`               | Port d’écoute de FastAPI               | `8000`                       |
-| Python  | `API_PASSWORD`       | Mot de passe attendu dans l’en-tête    | `5`                          |
-| Python  | `DATA_FILE_PATH`     | Chemin du fichier JSON                 | `data/projet-energia.json`   |
+| ms_dijkstra | `PORT`, `API_PASSWORD` | Port d'écoute FastAPI, mot de passe attendu dans l'en-tête `x-password` | `8080`, `5` |
+| ms_metier | `PORT`, `API_PASSWORD` | Port d'écoute FastAPI, mot de passe attendu | `8006`, `5` |
+| ms_mcp  | `PORT`, `API_PASSWORD` | Port d'écoute FastAPI, mot de passe attendu | `8003`, `5` |
+| ms_data | `PORT`, `POSTGRES_*`  | Port d'écoute FastAPI, connexion à sa base Postgres | `8004`                        |
+| ms_predictive | `PORT`, `POSTGRES_*`, `SOURCE_POSTGRES_*` | Port d'écoute FastAPI, connexion à sa base Postgres et à la base source (`ms_data`) | `8005` |
+
+Le détail complet de chaque service se trouve dans son propre `.env.example`.
 
 ---
 # Routes disponibles
 
 ##  Routes du "gateway"
 
-| Méthode | Route | Description | Body JSON |
+Toutes les routes sont préfixées par `/api` et en GET (pas d'authentification requise côté client : la gateway ajoute elle-même l'en-tête `x-password` attendu par les microservices).
+
+| Méthode | Route | Description | Paramètres |
 |---|---|---|---|
-| GET | `api/centrales` | retourner la liste des centrales nucléaires  | Aucun |
-| GET | `api/regions` | Retourne la liste de toutes les régions | Aucun |
-| GET | `api/liaisons` | retourner la liste des liaisons  | Aucun |
-| POST | `api/simulation` | faire une nouvelle simulation,Par exemple Une région a besoin de X MW supplémentaires : quelles centrales doivent augmenter leur production, et de combien ? | ```json { "region": "centre_val_de_loire", "augmentation": "500" } ``` 
+| GET | `/api/centrales` | Liste des centrales nucléaires | Aucun |
+| GET | `/api/regions` | Liste de toutes les régions | Aucun |
+| GET | `/api/liaisons` | Liste des liaisons inter-centrales | Aucun |
+| GET | `/api/simulation` | Répartition d'une hausse de consommation sur une région | `region`, `augmentation_mw` (query) |
+| GET | `/api/etat-centrale` | État complet d'une centrale | `centrale_id` (query) |
+| GET | `/api/centrales-disponibles` | Nombre de centrales disponibles | Aucun |
+| GET | `/api/consommation-region` | Consommation d'une région à un instant donné | `region_id`, `heure`, `jour_relatif` (query) |
+| GET | `/api/consommation-region-max` | Région qui consomme le plus à une heure donnée | `heure`, `jour_relatif` (query) |
+| GET | `/api/region-situation` | Situation énergétique d'une région (conso + prod + solde) | `region_id`, `heure`, `jour_relatif` (query) |
+| GET | `/api/normaliser` | Interprète une question en langage naturel (via `ms_mcp`) | `question` (query) |
+| GET | `/api/predictions/consommation` | Prédiction de consommation (via `ms_predictive`) | `region`, `date`, `heure` (query) |
 
-## Routes du "micro service Python"
+## Routes des microservices FastAPI
 
-| Méthode | Route | Description | Body JSON |
+La gateway proxifie ces routes ; elles peuvent aussi être appelées directement sur chaque service (utile pour le debug).
+
+| Méthode | Route | Service | Description |
 |---|---|---|---|
-| GET | `/centrales` | retourner la liste des centrales nucléaires  | Aucun |
-| GET | `/regions` | Retourne la liste de toutes les régions | Aucun |
-| GET | `/liaisons` | retourner la liste des liaisons  | Aucun |
-| POST | `/simulation` | faire une nouvelle simulation,Par exemple Une région a besoin de X MW supplémentaires : quelles centrales doivent augmenter leur production, et de combien ? | ```json { "region": "centre_val_de_loire", "augmentation": "500" } ``` 
+| GET | `/centrales`, `/regions`, `/liaisons` | `ms_metier` | Données brutes du datastore |
+| GET | `/simulation` | `ms_metier` | Moteur prescriptif : `region`, `augmentation_mw` (query) |
+| GET | `/dijkstra/...` | `ms_dijkstra` | Graphe, Dijkstra, datastore (voir [le détail plus bas](#routes-energia-disponibles)) |
+| GET | `/analytics/...` | `ms_dijkstra` | État des centrales et des régions |
+| GET | `/predictions/consommation/{region_id}/{date}/{heure}` | `ms_predictive` | Prédiction ML de consommation |
+| GET | `/normaliser` | `ms_mcp` | Normalisation d'une question en langage naturel |
 
+Le catalogue interne utilisé par `ms_mcp` pour interpréter le langage naturel est maintenu à la main dans [`ms_data/catalog.py`](ms_data/catalog.py) (voir [Catalogue dynamique des routes](#catalogue-dynamique-des-routes)) ; à tenir à jour manuellement en cas d'ajout/déplacement de route dans les microservices. Le détail ci-dessous reflète l'état actuel du code.
 
 ## Format d’une demande de simulation
 
 La route suivante permet de demander une nouvelle répartition de la production :
 
-POST /api/simulation
-
-Exemple de corps JSON :
-```
-{
-  "region": "centre_val_de_loire",
-  "augmentation": 500
-}
-```
+GET /api/simulation?region=centre_val_de_loire&augmentation_mw=500
 
 ## Description des champs
-Champ	Type	Description
-region	chaîne de caractères	Identifiant de la région concernée par la hausse de consommation.
-augmentation	nombre	Puissance supplémentaire demandée, exprimée en mégawatts.
 
-La valeur augmentation doit être envoyée sous la forme d’un nombre et non d’une chaîne de caractères.
+| Champ | Type | Description |
+| --- | --- | --- |
+| `region` | chaîne de caractères | Identifiant de la région concernée par la hausse de consommation. |
+| `augmentation_mw` | nombre | Puissance supplémentaire demandée, exprimée en mégawatts. |
+
+La valeur `augmentation_mw` doit être envoyée sous la forme d’un nombre et non d’une chaîne de caractères.
 
 ---
 
@@ -185,43 +223,47 @@ liste des éléments à ajouter au Readme :
 ---
 # nassim — Graphe & Dijkstra
 
-Le bout que je gère dans EnergIA. En gros : on prend `data/data.json`
-(des centrales, des régions, des liaisons entre centrales), on en fait un
-graphe, et on calcule le chemin le plus court entre deux centrales avec
-Dijkstra. Rien de plus.
+Le bout que je gère dans EnergIA, désormais dans [`ms_dijkstra/`](ms_dijkstra/). En gros : on prend les centrales, régions et liaisons stockées dans `relationnal.db` (produite par `ms_data`), on en fait un graphe, et on calcule le chemin le plus court entre deux centrales avec Dijkstra. Le service expose aussi des routes d'analyse (`/analytics/...`). Rien de plus.
 
 ## Prérequis
 
 - Python 3.13
-- `fastapi[standard]`, `pydantic`, `uvicorn` (tout est dans `pyproject.toml`)
+- `fastapi[standard]`, `pydantic`, `uvicorn` (tout est dans `pyproject.toml`, géré avec `uv`)
 
 ## Rôles des fichiers
 
 | Fichier / dossier | Rôle |
 | --- | --- |
-| `data/data.json` | Les données brutes : centrales, régions, liaisons, params |
+| `data/relationnal.db` (via `ms_data/data/`) | Base SQLite en lecture seule : centrales, régions, liaisons, params — produite par `ms_data` |
+| `data/data.json` | Ancien format brut, conservé en référence mais plus lu par le datastore |
 | `graph/models.py` | Les classes : `Reactor`, `Centrale`, `Region`, `Liaison`, `Graph` |
-| `graph/datastore.py` | Charge le JSON en mémoire, vérifie que ça tient debout |
-| `graph/parsing.py` | Transforme le JSON brut en objets Python |
+| `graph/datastore.py` | Charge `relationnal.db` en mémoire, vérifie que ça tient debout |
+| `graph/parsing.py` | Transforme les lignes SQL en objets Python |
 | `graph/serializers.py` | Fait l'inverse : objets -> dict JSON |
-| `main.py` | Démarre l'app FastAPI, branche les routes |
+| `main.py` | Démarre l'app FastAPI, charge `.env`, branche les routers `dijkstra` et `analytics` (protégés par `x-password`) |
+| `routes/auth.py` | Dépendance `check_password`, mot de passe lu via `API_PASSWORD` |
 | `routes/dijkstra.py` | Les endpoints `/dijkstra/...` |
+| `routes/analytics.py` | Les endpoints `/analytics/...` (état des centrales/régions) |
 | `entrainement/` | Brouillons, pas branchés à l'API (test de l'algo sur un petit graphe A-G, ancien rapport console) |
+
+Les routes racine historiques (`/centrales`, `/regions`, `/liaisons`, `/simulation`) et le moteur prescriptif ont depuis été déplacés vers [`ms_metier/`](ms_metier/).
 
 ## Lancer le projet
 
 `main.py` ne se lance plus avec `python main.py`, c'est une app FastAPI.
-Depuis `dijkstra/` :
+Depuis `ms_dijkstra/` :
 
 ```
 uv run fastapi dev
 ```
 
+Ou via Docker, depuis la racine du projet : `docker compose up --build python-service` (conteneur `energia-api`, port `8080`).
+
 ## Comment les données arrivent
 
 1. Au premier appel, `get_store()` charge tout une fois (singleton). Y'a
    aussi une route `/dijkstra/load-datastore` pour forcer un rechargement.
-2. Le chargement lit le JSON et remplit trois listes d'objets :
+2. Le chargement lit `relationnal.db` (produite par `ms_data` via `POST /database/ingest`) et remplit trois listes d'objets :
    centrales, régions, liaisons. Chaque centrale devient un nœud du
    graphe, chaque liaison devient une arête.
 3. Ensuite on vérifie que les données ne racontent pas n'importe quoi :
@@ -297,31 +339,29 @@ L’objectif est de déterminer, pour chaque région et chaque quart d’heure, 
 
 # Lancer une simulation
 
+Ce moteur de simulation temporelle est implémenté dans [`ms_metier/`](ms_metier/) (routes `/metier/...`, voir [Routes EnergIA disponibles](#routes-energia-disponibles)).
+
 ## Prérequis
 
 Le projet nécessite notamment :
 
-- Python ;
+- Python 3.13 ;
 - FastAPI ;
-- les dépendances présentes dans le projet ;
-- les fichiers JSON nécessaires à la simulation.
+- les dépendances présentes dans `ms_metier/pyproject.toml`, gérées avec `uv` ;
+- `relationnal.db`, produite par `ms_data` (voir la section Installation).
 
-Activer l’environnement virtuel :
+Depuis `ms_metier/` :
 
-```powershell
-.\.venv\Scripts\Activate.ps1
+```bash
+uv sync
+uv run fastapi dev
 ```
-Se placer dans le dossier fastapi :
-```powershell
-cd fastapi
-```
-Lancer l'API
-```powershell
-fastapi run .\main.py
-```
+
+Ou via Docker, depuis la racine du projet : `docker compose up --build ms_metier` (conteneur `metier-service`, port hôte `8007`).
+
 Ouvrir le Swagger avec :
 ```
-http://localhost:8000/docs
+http://localhost:8007/docs
 ```
 ## Format des données temporelles
 
@@ -811,7 +851,7 @@ Exemple :
 http://langage:11434/api/generate
 ```
 
-Le nom exact dépend du nom du service déclaré dans `compose.yaml`.
+Le nom exact dépend du nom du service déclaré dans `docker-compose.yml` (`langage`). Le modèle utilisé est `qwen2.5:7b` (voir [`ms_mcp/routes/ollama.py`](ms_mcp/routes/ollama.py)), téléchargé automatiquement par `./setup.sh`.
 
 ---
 
@@ -926,39 +966,53 @@ Le MCP utilise ensuite le résultat pour effectuer l'appel réel vers le microse
 
 ## Routes EnergIA disponibles
 
-Le catalogue contient les routes suivantes :
+Routes internes actuellement exposées par les microservices (indépendamment du préfixe `/api` ajouté par la gateway) :
 
 ```text
+# ms_metier (moteur prescriptif, routes héritées de l'ancien python-service)
 GET  /centrales
 GET  /regions
 GET  /liaisons
 GET  /simulation
+GET  /metier/calcule
+POST /metier/simulation-regions
+GET  /metier/besoins-residuels
+POST /metier/simulation-complete
 
-POST /db/ingest
-
+# ms_dijkstra (graphe, Dijkstra, analyse)
 GET  /dijkstra/load-datastore
 GET  /dijkstra/rapport
 GET  /dijkstra/shortest-path
 GET  /dijkstra/centrales
 GET  /dijkstra/centrales/{centrale_id}
 GET  /dijkstra/regions
-GET /dijkstra/regions/{region_id}	
-GET /dijkstra/liaisons	
-GET	/dijkstra/anomalies	
-GET	/dijkstra/calcule	
+GET  /dijkstra/regions/{region_id}
+GET  /dijkstra/liaisons
+GET  /dijkstra/anomalies
+GET  /analytics/centrales/{centrale_id}/etat
+GET  /analytics/centrales/disponibles
+GET  /analytics/regions/{region_id}/consommation
+GET  /analytics/regions/consommation/max
+GET  /analytics/regions/{region_id}/situation
 
-POST	/dijkstra/simulation-regions
+# ms_data (ingestion/catalogue)
+POST /database/ingest
+POST /database/ingest-eco2mix
+POST /database/ingest-eco2mix-historique
 
-GET	/dijkstra/besoins-residuels	
-GET	/dijkstra/simulation-complete	
-GET	/analytics/centrales/{centrale_id}
-GET	/analytics/centrales/disponibles	
-GET	/analytics/regions/{region_id}
-GET	/analytics/regions/consommation/max	
-GET	/analytics/regions/{region_id}
+# ms_predictive (prédictions ML)
+GET  /predictions/consommation/{region_id}/{date}/{heure}
+POST /predictions/periode
+
+# ms_predictive (ingestion/diagnostic, pas dans le catalogue ms_mcp)
+POST /ingest/dim-regionale
+POST /ingest/fait-consommation
+POST /ingest/dim-meteo
+POST /ingest/dim-event
+GET  /diagnostics/dates-manquantes
 ```
 
-Le catalogue présent dans `relationnal.db` constitue la source de référence pour les routes disponibles.
+Ce catalogue est celui interrogé par `ms_mcp` (`GET /routes`, table `route` de `relationnal.db`), alimenté depuis [`ms_data/catalog.py`](ms_data/catalog.py). Toute route ajoutée, déplacée ou supprimée dans un microservice doit être répercutée à la main dans ce fichier, puis republiée dans `relationnal.db` via `POST /database/ingest`.
 
 ---
 
@@ -995,7 +1049,7 @@ http://langage:11434
 
 ## Reconstruction de l'environnement Docker
 
-Après modification du fichier `compose.yaml`, les conteneurs peuvent être recréés avec :
+Après modification du fichier `docker-compose.yml` (ou de ses overrides `docker-compose.override.yml` / `docker-compose.local.yml`), les conteneurs peuvent être recréés avec :
 
 ```powershell
 docker compose down --remove-orphans
