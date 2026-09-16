@@ -82,6 +82,27 @@ Grâce à la conteneurisation, il n’est pas nécessaire d’installer directem
 
 # Installation
 
+## Setup rapide
+
+Pour une installation en une seule commande (recommandé) :
+
+```bash
+git clone https://github.com/n4ssim-dev/EnergIA.git
+cd EnergIA
+./setup.sh
+```
+
+Le script [`./setup.sh`](setup.sh) :
+
+- crée les fichiers `.env` manquants à partir de chaque `.env.example` (racine, `gateway/`, `ms_data/`, `ms_dijkstra/`, `ms_mcp/`, `ms_metier/`, `ms_predictive/`), **sans jamais écraser un `.env` déjà présent** ;
+- démarre la stack avec `docker compose up -d --build` ;
+- télécharge le modèle Ollama `qwen2.5:7b` si besoin (ignoré s'il est déjà présent) ;
+- affiche l'état de chaque étape (`[OK]` / `[IGNORÉ]` / `[NOUVEAU]` / `[ÉCHEC]`) puis, une fois terminé, l'adresse de chaque service.
+
+Il peut être relancé sans risque à tout moment : les étapes déjà faites sont simplement marquées `[IGNORÉ]`.
+
+Les étapes détaillées ci-dessous décrivent ce que fait le script, pour une installation manuelle ou pour en comprendre chaque partie.
+
 ## 1. Cloner le depôt Git 
 ```
 git clone <https://github.com/n4ssim-dev/EnergIA.git>
@@ -92,10 +113,11 @@ cd <EnergIA>
 ```
 ## 2. Configuration des variables d'environnement
 
-Chaque service possède son propre `.env.example` : la racine du projet et chacun des microservices [`ms_data/`](ms_data/), [`ms_dijkstra/`](ms_dijkstra/), [`ms_mcp/`](ms_mcp/), [`ms_metier/`](ms_metier/), [`ms_predictive/`](ms_predictive/). Créer un `.env` dans chacun de ces dossiers en vous basant sur son `.env.example` :
+Chaque service possède son propre `.env.example` : la racine du projet, [`gateway/`](gateway/) et chacun des microservices [`ms_data/`](ms_data/), [`ms_dijkstra/`](ms_dijkstra/), [`ms_mcp/`](ms_mcp/), [`ms_metier/`](ms_metier/), [`ms_predictive/`](ms_predictive/). Créer un `.env` dans chacun de ces dossiers en vous basant sur son `.env.example` :
 
 ```bash
 cp .env.example .env
+cp gateway/.env.example gateway/.env
 cp ms_data/.env.example ms_data/.env
 cp ms_dijkstra/.env.example ms_dijkstra/.env
 cp ms_mcp/.env.example ms_mcp/.env
@@ -103,7 +125,7 @@ cp ms_metier/.env.example ms_metier/.env
 cp ms_predictive/.env.example ms_predictive/.env
 ```
 
-Le script [`./setup.sh`](setup.sh) fait ces copies automatiquement (sans jamais écraser un `.env` déjà présent), démarre les conteneurs et télécharge le modèle Ollama : voir l'étape 3.
+Le script [`./setup.sh`](setup.sh) fait ces copies automatiquement (sans jamais écraser un `.env` déjà présent), démarre les conteneurs et télécharge le modèle Ollama — voir [Setup rapide](#setup-rapide) ci-dessus.
 
 Les valeurs des variables doivent être adaptées à l’environnement utilisé.
 
@@ -111,13 +133,7 @@ Les fichiers .env ne doivent pas être ajoutés au dépôt Git.
 
 ## 3. Lancement des conteneurs Docker
 
-Le plus simple est d'exécuter le script de démarrage, qui configure les `.env` manquants, lance `docker compose up --build` et télécharge le modèle Ollama si besoin :
-
-```bash
-./setup.sh
-```
-
-Ou manuellement :
+Voir [Setup rapide](#setup-rapide) ci-dessus pour `./setup.sh`. Manuellement :
 
 ```bash
 docker compose up --build
