@@ -18,7 +18,8 @@ services:
       PORT: 8006
 
   gateway:
-    image: n4ssim11/energia:${GATEWAY_IMAGE_TAG:-gateway-latest}
+    #image: n4ssim11/energia:${GATEWAY_IMAGE_TAG:-gateway-latest}
+    image: energia-gateway:latest
     profiles: ["gateway"]
     ports:
       - "${GATEWAY_PORT:-3000}:3000"
