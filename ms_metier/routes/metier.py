@@ -376,11 +376,18 @@ def _simulation_complete_region_heure(
     besoin_restant = resultat_repartition["unsatisfied_mw"]
 
     if besoin_restant > 0:
-        print(
-            "Besoin non couvert localement, "
-            "recherche de centrales extérieures"
+        source_id = region["local_plant_ids"][0]
+
+        centrales_distantes = rechercher_centrales_distantes(
+            source_id,
+            region["external_entry_plant_ids"],
+            store
         )
 
+        print(
+            "Centrales extérieures trouvées :",
+            centrales_distantes
+        )
     allocations_reelles = []
     total_nucleaire_reellement_fourni = 0
 
