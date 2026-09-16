@@ -328,6 +328,7 @@ def _simulation_complete_region_heure(
     production_nucleaire,
     etat_centrales,
     affectations_exterieures,
+    informations_dijkstra_exterieures,
 ):
     """
     Simule la couverture du besoin résiduel d'une région
@@ -737,8 +738,6 @@ def _simulation_complete_region_heure(
     # 9. DIJKSTRA SI LE LOCAL NE SUFFIT PAS
     # =========================================================
 
-    informations_dijkstra = {}
-
     if (
         reste_a_couvrir_mw > 0
         and centrales_locales_ids
@@ -755,6 +754,26 @@ def _simulation_complete_region_heure(
                 store
             )
         )
+
+        # Mémorisation des informations Dijkstra
+        # pour les conserver entre les quarts d'heure
+        for centrale_distante in centrales_distantes:
+
+            plant_id = centrale_distante["plant_id"]
+
+            informations_dijkstra_exterieures[
+                plant_id
+            ] = {
+                "distance_km": centrale_distante.get(
+                    "distance_km"
+                ),
+                "loss_percent": centrale_distante.get(
+                    "loss_percent"
+                ),
+                "chemin": centrale_distante.get(
+                    "chemin"
+                ),
+            }
 
         candidats_externes = []
 
@@ -825,7 +844,7 @@ def _simulation_complete_region_heure(
                     centrale,
             })
 
-            informations_dijkstra[
+            informations_dijkstra_exterieures[
                 plant_id
             ] = {
                 "distance_km":
@@ -1019,7 +1038,7 @@ def _simulation_complete_region_heure(
             continue
 
         infos_reseau = (
-            informations_dijkstra.get(
+            informations_dijkstra_exterieures.get(
                 plant_id,
                 {}
             )
@@ -1108,8 +1127,10 @@ def _simulation_complete_region_heure(
         "excedent_production_mw":
             excedent_production_mw,
 
-        "etat_centrales":
-            dict(etat_centrales),
+        "etat_centrales": {
+            plant_id: round(puissance, 2)
+            for plant_id, puissance in etat_centrales.items()
+        },
     }
 
 def construire_besoins_residuels_predits(
@@ -1255,63 +1276,112 @@ def construire_besoins_residuels_predits(
 def simulation_complete(
     date: str = Query(
         ...,
-        description="Jour ingéré (YYYY-MM-DD) via POST /database/ingest-eco2mix"
+        description=(
+            "Jour ingéré (YYYY-MM-DD) "
+            "via POST /database/ingest-eco2mix"
+        )
     ),
     filtre: Optional[SimulationCompleteFiltre] = None,
     perturbations: Optional[list[Perturbation]] = None,
 ):
+    # =========================================================
+    # 1. INITIALISATION
+    # =========================================================
+
     store = get_store()
 
     if perturbations is None:
         perturbations = []
 
-    # ---------------------------------
-    # Chargement des données
-    # ---------------------------------
+    # =========================================================
+    # 2. CHARGEMENT DES DONNEES
+    # =========================================================
 
-    donnees_consommation = charger_journee_reference(date)
-    donnees_non_pilotables = (charger_journee_reference_hors_nucleaire(date))
-    production_nucleaire = (charger_production_nucleaire())
+    donnees_consommation = (
+        charger_journee_reference(date)
+    )
 
-    # ---------------------------------
-    # Préparation des données métier
-    # ---------------------------------
+    donnees_non_pilotables = (
+        charger_journee_reference_hors_nucleaire(
+            date
+        )
+    )
 
-    journee = parcourir_journee(donnees_consommation)
+    production_nucleaire = (
+        charger_production_nucleaire()
+    )
+
+    # =========================================================
+    # 3. PREPARATION SOLAIRE / EOLIEN
+    # =========================================================
+
+    journee = parcourir_journee(
+        donnees_consommation
+    )
 
     production_solaire = (
-        recuperer_donnees_solaires(donnees_non_pilotables)
+        recuperer_donnees_solaires(
+            donnees_non_pilotables
+        )
     )
 
     production_eolien = (
-        recuperer_donnees_eolien(donnees_non_pilotables)
+        recuperer_donnees_eolien(
+            donnees_non_pilotables
+        )
     )
 
     production_non_pilotable = (
-        production_hors_nucleaire(production_solaire, production_eolien)
+        production_hors_nucleaire(
+            production_solaire,
+            production_eolien
+        )
     )
 
-    besoins_residuels = (
-        calcul_besoins_residuels(journee, production_non_pilotable)
+    # =========================================================
+    # 4. REGIONS ET TIMESTAMPS DISPONIBLES
+    # =========================================================
+
+    # On utilise les données historiques uniquement
+    # pour récupérer la liste des régions disponibles.
+    besoins_residuels_reference = (
+        calcul_besoins_residuels(
+            journee,
+            production_non_pilotable
+        )
     )
 
-    # ---------------------------------
-    # Régions et timestamps disponibles
-    # ---------------------------------
+    regions_disponibles = list(
+        besoins_residuels_reference.keys()
+    )
 
-    regions_disponibles = list(besoins_residuels.keys())
+    timestamps = (
+        donnees_consommation["timestamps"]
+    )
 
-    timestamps = donnees_consommation["timestamps"]
+    # =========================================================
+    # 5. PREDICTIONS DE CONSOMMATION
+    # =========================================================
 
-    # ---------------------------------
-    # Appel au microservice prédictif
-    # ---------------------------------
+    predictions = recuperer_predictions(
+        date,
+        regions_disponibles
+    )
 
-    predictions = recuperer_predictions(date, regions_disponibles)
-
-    # ---------------------------------
-    # Calcul des besoins résiduels prédits
-    # ---------------------------------
+    # =========================================================
+    # 6. BESOINS RESIDUELS PREDITS
+    # =========================================================
+    #
+    # Cette fonction réalise :
+    #
+    # consommation prédite
+    # + perturbation éventuelle
+    # - solaire
+    # - éolien
+    #
+    # C'est désormais LA source unique utilisée
+    # par simulation-complete.
+    # =========================================================
 
     besoins_residuels_predits = (
         construire_besoins_residuels_predits(
@@ -1323,9 +1393,9 @@ def simulation_complete(
         )
     )
 
-    # ---------------------------------
-    # Récupération des filtres
-    # ---------------------------------
+    # =========================================================
+    # 7. RECUPERATION DES FILTRES
+    # =========================================================
 
     region_filtre = (
         filtre.region
@@ -1339,13 +1409,14 @@ def simulation_complete(
         else None
     )
 
-    # ---------------------------------
-    # Vérification de la région
-    # ---------------------------------
+    # =========================================================
+    # 8. VERIFICATION DE LA REGION
+    # =========================================================
 
     if region_filtre is not None:
 
         if region_filtre not in regions_disponibles:
+
             raise HTTPException(
                 status_code=404,
                 detail=(
@@ -1354,19 +1425,24 @@ def simulation_complete(
                 )
             )
 
-        regions_a_traiter = [region_filtre]
+        regions_a_traiter = [
+            region_filtre
+        ]
 
     else:
 
-        regions_a_traiter = (regions_disponibles)
+        regions_a_traiter = (
+            regions_disponibles
+        )
 
-    # ---------------------------------
-    # Vérification de l'heure
-    # ---------------------------------
+    # =========================================================
+    # 9. VERIFICATION DE L'HEURE
+    # =========================================================
 
     if heure_filtre is not None:
 
         if heure_filtre not in timestamps:
+
             raise HTTPException(
                 status_code=404,
                 detail=(
@@ -1376,18 +1452,22 @@ def simulation_complete(
             )
 
         indices_a_traiter = [
-            timestamps.index(heure_filtre)
+            timestamps.index(
+                heure_filtre
+            )
         ]
 
     else:
 
         indices_a_traiter = list(
-            range(len(timestamps))
+            range(
+                len(timestamps)
+            )
         )
 
-    # ---------------------------------
-    # Recherche de la prédiction filtrée
-    # ---------------------------------
+    # =========================================================
+    # 10. PREDICTION FILTREE
+    # =========================================================
 
     prediction_filtree = None
 
@@ -1399,7 +1479,9 @@ def simulation_complete(
         for prediction in predictions:
 
             heure_prediction = (
-                prediction["date_heure"][11:16]
+                prediction[
+                    "date_heure"
+                ][11:16]
             )
 
             if (
@@ -1408,47 +1490,28 @@ def simulation_complete(
                 and heure_prediction
                 == heure_filtre
             ):
-                prediction_filtree = prediction
+
+                prediction_filtree = (
+                    prediction
+                )
+
                 break
 
-        print("Prédiction filtrée :", prediction_filtree)
+    # =========================================================
+    # 11. BESOIN RESIDUEL FILTRE
+    # =========================================================
+    #
+    # On ne recalcule PAS le besoin ici.
+    #
+    # On récupère directement la valeur
+    # déjà calculée dans besoins_residuels_predits.
+    # Elle contient donc aussi la perturbation.
+    # =========================================================
 
-    # ---------------------------------
-    # Calcul du besoin résiduel prédit
-    # ---------------------------------
-
-    besoin_residuel_predit = None
-
-    if prediction_filtree is not None:
-
-        index_heure = timestamps.index(
-            heure_filtre
-        )
-
-        production_non_pilotable_heure = (
-            production_non_pilotable[
-                region_filtre
-            ][index_heure]
-        )
-
-        besoin_residuel_predit = round(
-            prediction_filtree[
-                "consommation_predite_mw"
-            ]
-            - production_non_pilotable_heure,
-            2
-        )
-
-        print(
-            "Besoin résiduel prédit :",
-            besoin_residuel_predit,
-            type(besoin_residuel_predit)
-        )
-
+    besoin_residuel_filtre_mw = None
 
     if (
-        besoin_residuel_predit is not None
-        and region_filtre is not None
+        region_filtre is not None
         and heure_filtre is not None
     ):
 
@@ -1456,60 +1519,102 @@ def simulation_complete(
             heure_filtre
         )
 
-        besoins_residuels[
-            region_filtre
-        ][index_heure] = besoin_residuel_predit
-    # ---------------------------------
-    # Simulation métier actuelle
-    # ---------------------------------
+        besoin_residuel_filtre_mw = (
+            besoins_residuels_predits[
+                region_filtre
+            ][index_heure]
+        )
 
-    # Correction : on simule TOUJOURS depuis l'index 0 jusqu'au dernier index
-    # demandé, dans l'ordre, pour que etat_centrales reflète la vraie
-    # trajectoire de la journée à chaque pas. Filtrer directement sur
-    # indices_a_traiter sans rejouer les pas précédents donnait un résultat
-    # faux pour toute heure != 00:00 (chaque centrale repartait de
-    # initial_output_mw_at_23_45_previous_day au lieu de son état réel).
-    dernier_index_necessaire = max(indices_a_traiter)
-    indices_a_simuler = set(indices_a_traiter)
+    # =========================================================
+    # 12. SIMULATION METIER
+    # =========================================================
+    #
+    # Même si on demande uniquement 15:00,
+    # on rejoue :
+    #
+    # 00:00
+    # 00:15
+    # ...
+    # 14:45
+    # 15:00
+    #
+    # Cela permet de conserver l'état réel
+    # des centrales au fil de la journée.
+    # =========================================================
+
+    dernier_index_necessaire = max(
+        indices_a_traiter
+    )
+
+    indices_a_simuler = set(
+        indices_a_traiter
+    )
 
     resultats = {}
-    for region_id in regions_a_traiter:
-        etat_centrales = {}
-        affectations_exterieures = {}
-        resultats_region = []
-        for index in range(dernier_index_necessaire + 1):
-            resultat_pas = _simulation_complete_region_heure(
-                region_id,
-                index,
-                store,
-                donnees_consommation,
-                besoins_residuels_predits,
-                production_nucleaire,
-                etat_centrales,
-                affectations_exterieures,
-            )
-            if index in indices_a_simuler:
-                resultats_region.append(resultat_pas)
-        resultats[region_id] = resultats_region
 
-    # ---------------------------------
-    # Réponse
-    # ---------------------------------
+    for region_id in regions_a_traiter:
+
+        # Etat physique des centrales
+        # conservé entre les quarts d'heure.
+        etat_centrales = {}
+
+        # Puissance des centrales extérieures
+        # affectée à cette région.
+        affectations_exterieures = {}
+
+        informations_dijkstra_exterieures = {}
+
+        resultats_region = []
+
+        for index in range(
+            dernier_index_necessaire + 1
+        ):
+
+            resultat_pas = (
+                _simulation_complete_region_heure(
+                    region_id,
+                    index,
+                    store,
+                    donnees_consommation,
+                    besoins_residuels_predits,
+                    production_nucleaire,
+                    etat_centrales,
+                    affectations_exterieures,
+                    informations_dijkstra_exterieures,
+                )
+            )
+
+            # On simule toutes les heures précédentes,
+            # mais on ne retourne que celles demandées.
+            if index in indices_a_simuler:
+
+                resultats_region.append(
+                    resultat_pas
+                )
+
+        resultats[
+            region_id
+        ] = resultats_region
+
+    # =========================================================
+    # 13. REPONSE
+    # =========================================================
 
     return {
-        "regions": regions_a_traiter,
+        "regions":
+            regions_a_traiter,
 
         "heures": [
             timestamps[index]
             for index in indices_a_traiter
         ],
 
-        "prediction_filtree": (prediction_filtree),
+        "prediction_filtree":
+            prediction_filtree,
 
-        "consommation_predite_mw": 4112.49,
-        "perturbation_mw": 500,
-        "consommation_apres_perturbation_mw": 4612.49,
-        "besoin_residuel_mw": 3532.49,
+        "besoin_residuel_mw":
+            besoin_residuel_filtre_mw,
 
-        "resultats": resultats,
+        "resultats":
+            resultats,
     }
